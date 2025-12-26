@@ -1,0 +1,62 @@
+#version 460
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba8, set = 0, binding = 0) uniform image2D image;
+
+layout(push_constant) uniform PushConstant {
+    float seconds;
+}
+u_Time;
+
+float random(in vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.989, 78.233))) * 43758.543);
+}
+
+float rseed = 0.;
+vec2 random2() {
+    vec2 seed = vec2(rseed++, rseed++);
+    return vec2(random(seed + 0.342), random(seed + 0.756));
+}
+
+float julia_set(in vec2 uv, in float iter) {
+    const float r = 0.7885;
+
+    float a = u_Time.seconds / 5.;
+
+    vec2 c = vec2(r * cos(a), r * sin(a));
+
+    float i = 0.;
+    for (; i < iter; ++i) {
+        uv = vec2(uv.x * uv.x - uv.y * uv.y, 2. * uv.x * uv.y) + c;
+        if (length(uv) > 16.)
+            break;
+    }
+
+    return (i - log(log(dot(uv, uv)) / log(4.)) / log(2.));
+}
+
+void main() {
+    const float scale = 0.75;
+    const float max_iter = 32.;
+    const float max_samples = 16.;
+
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(image);
+
+    vec3 base = vec3(abs(cos(u_Time.seconds * 0.2) * 0.75),
+                     abs(sin(u_Time.seconds * 0.5) * 0.75),
+                     abs((cos(u_Time.seconds) + sin(u_Time.seconds * 0.5)) * 0.75));
+    vec3 col = base;
+    for (float i = 0.; i < max_samples; i++) {
+        vec2 uv = (2. * texelCoord + random2() - size.xy) / size.y;
+        uv /= scale;
+
+        float k = julia_set(uv, max_iter) / max_iter;
+
+        col += k * (base);
+    }
+
+    col = 1 - col / max_samples;
+    imageStore(image, texelCoord, vec4(col, 1.0));
+}
