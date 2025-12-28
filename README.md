@@ -51,7 +51,7 @@ $ cmake --build build --target sandbox
 
 ## Sandbox
 
-To configure the sandbox application, you need to use a configuration file. Place it next to the executable file with name *sandbox.json*, or it will be created automatically on first run.
+To configure the sandbox application, you need to use a configuration file. Place it next to the executable file with name *sandbox.json*, or it will be created automatically on first run. You can also use the cmake option to automatically generate a *sandbox.json* file for the specific template.
 
 ```
 {
@@ -88,29 +88,12 @@ The *pipelines* array may contain a sequence of pipelines that will be executed 
 
 #### Julia Set Demo
 
-Note: You need to specify the absolute paths to the rendering plugin and pipeline shader yourself.
+Set up cmake option ```SANDBOX_GENERATE_JULIA_SET_TEMPLATE``` to generate 'Julia Set Demo' configuration file
 
 ```
-{
-    "rendering": {
-        "name": "vulkan_rendering",
-        "path": ".../plugins/vulkan_rendering/vulkan_rendering.dll",
-        "window": {
-            "width": 900,
-            "height": 600,
-            "title": "broken - Julia Set Demo"
-        },
-        "device": {
-            "validation": false
-        },
-        "pipelines": [
-            {
-                "path": ".../sandbox/shaders/julia_set.comp"
-            }
-        ]
-    }
-}
+option(SANDBOX_GENERATE_JULIA_SET_TEMPLATE "Generate 'sandbox.json' with 'Julia Set Demo' template" ON)
 ```
+
 ![juliaset](sandbox/juliaset.png)
 
 ![juliaset](sandbox/juliaset1.png)

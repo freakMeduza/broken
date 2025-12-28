@@ -23,7 +23,7 @@ target_link_libraries(${PROJECT_NAME}
     broken::broken
     broken::vulkan_rendering)
 
-option(SANDBOX_GENERATE_JULIA_SET_TEMPLATE "Generate 'sandbox.json' with 'Julia Set Demo' template" ON)
+option(SANDBOX_GENERATE_JULIA_SET_TEMPLATE "Generate 'sandbox.json' with 'Julia Set Demo' template" OFF)
 
 get_target_property(VULKAN_RENDERING_PLUGIN_DIR broken::vulkan_rendering BINARY_DIR)
 set(SANDBOX_DEFAULT_RENDERING_PLUGIN_NAME "vulkan_rendering")
