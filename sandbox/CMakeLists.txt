@@ -22,3 +22,17 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     broken::broken
     broken::vulkan_rendering)
+
+option(SANDBOX_GENERATE_JULIA_SET_TEMPLATE "Generate 'sandbox.json' with 'Julia Set Demo' template" ON)
+
+get_target_property(VULKAN_RENDERING_PLUGIN_DIR broken::vulkan_rendering BINARY_DIR)
+set(SANDBOX_DEFAULT_RENDERING_PLUGIN_NAME "vulkan_rendering")
+set(SANDBOX_DEFAULT_RENDERING_PLUGIN_FILE "${VULKAN_RENDERING_PLUGIN_DIR}/vulkan_rendering.dll")
+set(SANDBOX_CONFIGURATION_FILE "${CMAKE_CURRENT_BINARY_DIR}/sandbox.json")
+
+if(SANDBOX_GENERATE_JULIA_SET_TEMPLATE)
+    if(NOT EXISTS ${SANDBOX_CONFIGURATION_FILE})
+        set(SANDBOX_DEFAULT_RENDERING_SHADER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/julia_set.comp")
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/templates/sandbox_julia_set.json" ${SANDBOX_CONFIGURATION_FILE} @ONLY)
+    endif()
+endif()
