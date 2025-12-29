@@ -1,0 +1,15 @@
+{
+    "rendering": {
+        "name": "@SANDBOX_DEFAULT_RENDERING_PLUGIN_NAME@",
+        "path": "@SANDBOX_DEFAULT_RENDERING_PLUGIN_FILE@",
+        "window": {
+            "width": 800,
+            "height": 800,
+            "title": "broken - Sandbox"
+        },
+        "device": {
+            "validation": false
+        },
+        "pipelines": []
+    }
+}

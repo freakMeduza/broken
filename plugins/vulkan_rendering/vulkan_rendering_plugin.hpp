@@ -12,9 +12,6 @@ private:
 
     virtual std::unique_ptr<RenderingWindow> createRenderingWindow(
         int width, int height, const std::string& title, bool resizable, bool fullscreen) const override;
-
-    virtual std::unique_ptr<RenderingDevice> createRenderingDevice(RenderingWindow* window,
-                                                                   bool enableValidationLayers) const override;
 };
 
 } // namespace broken

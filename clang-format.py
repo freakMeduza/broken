@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-EXTENSIONS = (".cpp", ".hpp", ".comp")
+EXTENSIONS = (".cpp", ".hpp", ".hpp.in", ".comp")
 EXCLUSIONS = {"build", ".git", ".vscode"}
 
 def format_sources(root_dir="."):

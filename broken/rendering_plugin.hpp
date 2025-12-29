@@ -6,15 +6,18 @@
 
 namespace broken {
 
+class RenderingDevice;
 class RenderingWindow {
 public:
     virtual ~RenderingWindow() noexcept = default;
 
-    virtual int getWidth() const = 0;
+    [[nodiscard]] virtual int getWidth() const = 0;
 
-    virtual int getHeight() const = 0;
+    [[nodiscard]] virtual int getHeight() const = 0;
 
-    virtual bool processEvents() = 0;
+    [[nodiscard]] virtual bool processEvents() = 0;
+
+    [[nodiscard]] virtual std::unique_ptr<RenderingDevice> createRenderingDevice(bool enableValidationLayers) const = 0;
 };
 
 class RenderingPipeline {
@@ -40,16 +43,13 @@ public:
 
     virtual void waitIdle() = 0;
 
-    virtual std::unique_ptr<RenderingPipeline> createRenderingPipeline(const std::string& path) const = 0;
+    [[nodiscard]] virtual std::unique_ptr<RenderingPipeline> createRenderingPipeline(const std::string& path) const = 0;
 };
 
 class RenderingPlugin : public Plugin {
 public:
-    virtual std::unique_ptr<RenderingWindow>
+    [[nodiscard]] virtual std::unique_ptr<RenderingWindow>
     createRenderingWindow(int width, int height, const std::string& title, bool resizable, bool fullscreen) const = 0;
-
-    virtual std::unique_ptr<RenderingDevice> createRenderingDevice(RenderingWindow* window,
-                                                                   bool enableValidationLayers) const = 0;
 };
 
 struct RenderingWindowConfig {

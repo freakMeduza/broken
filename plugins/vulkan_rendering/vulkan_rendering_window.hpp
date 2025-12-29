@@ -28,6 +28,8 @@ public:
 
     virtual bool processEvents() override;
 
+    virtual std::unique_ptr<RenderingDevice> createRenderingDevice(bool enableValidationLayers) const override;
+
 private:
     GLFWwindow* m_window = nullptr;
 };

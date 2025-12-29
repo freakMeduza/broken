@@ -23,8 +23,6 @@ public:
     inline vk::DescriptorSet getDescriptorSet() const noexcept { return m_descriptorSet.get(); }
 
 private:
-    vk::UniqueShaderModule createShaderModule(vk::Device logicalDevice, const std::string& shaderPath) const;
-
     vk::UniqueDescriptorPool m_descriptorPool;
     vk::UniqueDescriptorSetLayout m_descriptorSetLayout;
     vk::UniqueDescriptorSet m_descriptorSet;

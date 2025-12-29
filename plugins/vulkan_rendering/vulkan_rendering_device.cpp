@@ -1,9 +1,5 @@
 #include "vulkan_rendering_device.hpp"
 
-#include <glslang/Include/glslang_c_interface.h>
-// Required for use of glslang_default_resource
-#include <glslang/Public/resource_limits_c.h>
-
 #include "vulkan_rendering_pipeline.hpp"
 #include "vulkan_rendering_window.hpp"
 
@@ -93,7 +89,7 @@ vulkanDebugMessengerCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT messageSev
     return false;
 }
 
-VulkanRenderingDevice::VulkanRenderingDevice(VulkanRenderingWindow* window, bool enableValidationLayers) {
+VulkanRenderingDevice::VulkanRenderingDevice(const VulkanRenderingWindow* window, bool enableValidationLayers) {
     vk::ApplicationInfo applicationInfo;
     applicationInfo.setApiVersion(VK_API_VERSION_1_4);
 

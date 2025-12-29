@@ -1,5 +1,7 @@
 #include "vulkan_rendering_window.hpp"
 
+#include "vulkan_rendering_device.hpp"
+
 #include <iostream>
 
 namespace broken {
@@ -70,6 +72,10 @@ bool VulkanRenderingWindow::processEvents() {
     glfwPollEvents();
 
     return true;
+}
+
+std::unique_ptr<RenderingDevice> VulkanRenderingWindow::createRenderingDevice(bool enableValidationLayers) const {
+    return std::make_unique<VulkanRenderingDevice>(this, enableValidationLayers);
 }
 
 } // namespace broken

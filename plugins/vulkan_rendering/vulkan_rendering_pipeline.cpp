@@ -1,10 +1,7 @@
 #include "vulkan_rendering_pipeline.hpp"
 
 #include "vulkan_rendering_device.hpp"
-
-#include <glslang/Include/glslang_c_interface.h>
-// Required for use of glslang_default_resource
-#include <glslang/Public/resource_limits_c.h>
+#include <broken/spv_shader_compiler.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -178,21 +175,6 @@ public:
     }
 };
 
-// [[maybe_unused]] static glslang_stage_t to_glslang_stage(ShaderStage stage)
-// {
-//     switch (stage)
-//     {
-//     case ShaderStage::Compute:
-//         return GLSLANG_STAGE_COMPUTE;
-//     case ShaderStage::Vertex:
-//         return GLSLANG_STAGE_VERTEX;
-//     case ShaderStage::Fragment:
-//         return GLSLANG_STAGE_FRAGMENT;
-//     }
-
-//     return GLSLANG_STAGE_COUNT;
-// }
-
 VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* device,
                                                  const std::string& shaderFileName) {
     vk::DescriptorPoolSize descriptorPoolSize;
@@ -232,91 +214,16 @@ VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* de
 
     m_pipelineLayout = device->getLogicalDevice().createPipelineLayoutUnique(pipelineLayoutCreateInfo);
 
-    vk::UniqueShaderModule shaderModule = createShaderModule(device->getLogicalDevice(), shaderFileName);
+    SpvShaderCompiler compiler;
+    auto shaderCode = compiler.glslToSpvVulkan(shaderFileName);
+    vk::ShaderModuleCreateInfo shaderModuleCreateInfo;
+    shaderModuleCreateInfo.setCode(shaderCode);
+    vk::UniqueShaderModule shaderModule = device->getLogicalDevice().createShaderModuleUnique(shaderModuleCreateInfo);
+
     PipelineBuilder builder;
     builder.setShader(shaderModule.get(), vk::ShaderStageFlagBits::eCompute);
 
     m_pipeline = builder.buildComputePipeline(device->getLogicalDevice(), m_pipelineLayout.get());
-}
-
-vk::UniqueShaderModule VulkanRenderingPipeline::createShaderModule(vk::Device logicalDevice,
-                                                                   const std::string& shaderPath) const {
-    std::fstream fs(shaderPath, std::ios::in);
-    std::string src((std::istreambuf_iterator<char>(fs)), std::istreambuf_iterator<char>());
-
-    const glslang_input_t input = {
-        .language = GLSLANG_SOURCE_GLSL,
-        .stage = GLSLANG_STAGE_COMPUTE,
-        .client = GLSLANG_CLIENT_VULKAN,
-        .client_version = GLSLANG_TARGET_VULKAN_1_4,
-        .target_language = GLSLANG_TARGET_SPV,
-        .target_language_version = GLSLANG_TARGET_SPV_1_5,
-        .code = src.c_str(),
-        .default_version = 100,
-        .default_profile = GLSLANG_NO_PROFILE,
-        .force_default_version_and_profile = false,
-        .forward_compatible = false,
-        .messages = GLSLANG_MSG_DEFAULT_BIT,
-        .resource = glslang_default_resource(),
-    };
-
-    glslang_shader_t* shader = glslang_shader_create(&input);
-
-    std::vector<uint32_t> binary;
-    if (!glslang_shader_preprocess(shader, &input)) {
-        std::stringstream ss;
-        ss << shaderPath << "\n\t" << glslang_shader_get_info_log(shader) << "\n\t"
-           << glslang_shader_get_info_debug_log(shader);
-        std::cerr << ss.str() << std::endl;
-
-        glslang_shader_delete(shader);
-
-        return {};
-    }
-
-    if (!glslang_shader_parse(shader, &input)) {
-        std::stringstream ss;
-        ss << shaderPath << "\n\t" << glslang_shader_get_info_log(shader) << "\n\t"
-           << glslang_shader_get_info_debug_log(shader) << "\n\t" << glslang_shader_get_preprocessed_code(shader);
-        std::cerr << ss.str() << std::endl;
-
-        glslang_shader_delete(shader);
-
-        return {};
-    }
-
-    glslang_program_t* program = glslang_program_create();
-    glslang_program_add_shader(program, shader);
-
-    if (!glslang_program_link(program, GLSLANG_MSG_SPV_RULES_BIT | GLSLANG_MSG_VULKAN_RULES_BIT)) {
-
-        std::stringstream ss;
-        ss << shaderPath << "\n\t" << glslang_shader_get_info_log(shader) << "\n\t"
-           << glslang_shader_get_info_debug_log(shader);
-        std::cerr << ss.str() << std::endl;
-
-        glslang_program_delete(program);
-        glslang_shader_delete(shader);
-
-        return {};
-    }
-
-    glslang_program_SPIRV_generate(program, GLSLANG_STAGE_COMPUTE); // to_glslang_stage(stage));
-
-    binary.resize(glslang_program_SPIRV_get_size(program));
-    glslang_program_SPIRV_get(program, binary.data());
-
-    const char* spirv_messages = glslang_program_SPIRV_get_messages(program);
-    if (spirv_messages) {
-        std::cout << shaderPath << "\n\t" << spirv_messages << std::endl;
-    }
-
-    glslang_program_delete(program);
-    glslang_shader_delete(shader);
-
-    vk::ShaderModuleCreateInfo shaderModuleCreateInfo;
-    shaderModuleCreateInfo.setCode(binary);
-    return logicalDevice.createShaderModuleUnique(shaderModuleCreateInfo);
 }
 
 } // namespace broken

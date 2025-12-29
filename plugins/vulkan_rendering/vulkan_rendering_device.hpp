@@ -9,7 +9,7 @@ namespace broken {
 class VulkanRenderingWindow;
 class VulkanRenderingDevice final : public RenderingDevice {
 public:
-    explicit VulkanRenderingDevice(VulkanRenderingWindow* window, bool enableValidationLayers);
+    explicit VulkanRenderingDevice(const VulkanRenderingWindow* window, bool enableValidationLayers);
 
     VulkanRenderingDevice(const VulkanRenderingDevice&) = delete;
     VulkanRenderingDevice& operator=(const VulkanRenderingDevice&) = delete;

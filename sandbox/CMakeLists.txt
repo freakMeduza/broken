@@ -5,6 +5,7 @@ add_executable(${PROJECT_NAME} main.cpp)
 target_include_directories(${PROJECT_NAME}
     PRIVATE
     ${CMAKE_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -23,16 +24,26 @@ target_link_libraries(${PROJECT_NAME}
     broken::broken
     broken::vulkan_rendering)
 
-option(SANDBOX_GENERATE_JULIA_SET_TEMPLATE "Generate 'sandbox.json' with 'Julia Set Demo' template" OFF)
+set(SANDBOX_CONFIGURATION_FILE "${CMAKE_CURRENT_BINARY_DIR}/sandbox.json")
+
+option(SANDBOX_GENERATE_TEMPLATE_BLANK "Generate 'sandbox.json' with blank template" OFF)
+option(SANDBOX_GENERATE_TEMPLATE_JULIA_SET "Generate 'sandbox.json' with 'Julia Set Demo' template" ON)
 
 get_target_property(VULKAN_RENDERING_PLUGIN_DIR broken::vulkan_rendering BINARY_DIR)
 set(SANDBOX_DEFAULT_RENDERING_PLUGIN_NAME "vulkan_rendering")
 set(SANDBOX_DEFAULT_RENDERING_PLUGIN_FILE "${VULKAN_RENDERING_PLUGIN_DIR}/vulkan_rendering.dll")
-set(SANDBOX_CONFIGURATION_FILE "${CMAKE_CURRENT_BINARY_DIR}/sandbox.json")
 
-if(SANDBOX_GENERATE_JULIA_SET_TEMPLATE)
+if(SANDBOX_GENERATE_TEMPLATE)
+    if(NOT EXISTS ${SANDBOX_CONFIGURATION_FILE})
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/templates/sandbox.json" ${SANDBOX_CONFIGURATION_FILE} @ONLY)
+    endif()
+endif()
+
+if(SANDBOX_GENERATE_TEMPLATE_JULIA_SET)
     if(NOT EXISTS ${SANDBOX_CONFIGURATION_FILE})
         set(SANDBOX_DEFAULT_RENDERING_SHADER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/shaders/julia_set.comp")
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/templates/sandbox_julia_set.json" ${SANDBOX_CONFIGURATION_FILE} @ONLY)
     endif()
 endif()
+
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/sandbox.hpp.in" "${CMAKE_CURRENT_BINARY_DIR}/sandbox.hpp" @ONLY)

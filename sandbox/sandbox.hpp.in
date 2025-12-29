@@ -1,0 +1,3 @@
+#pragma once
+// This file is generated automatically by cmake
+static constexpr auto SANDBOX_CONFIGURATION_FILE = "@SANDBOX_CONFIGURATION_FILE@";

@@ -1,10 +1,11 @@
+#include <sandbox.hpp>
+
 #include <broken/configuration.hpp>
 #include <broken/plugin_loader.hpp>
 #include <broken/rendering_command_list.hpp>
 
-int main([[maybe_unused]] int argc, char** argv) {
-    const auto configurationPath = std::filesystem::path(argv[0]).parent_path().append("sandbox.json").string();
-    broken::Configuration configuration(configurationPath);
+int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
+    broken::Configuration configuration(SANDBOX_CONFIGURATION_FILE);
     std::cout << configuration << std::endl;
 
     auto renderingPluginConfig = configuration.get<broken::RenderingPluginConfig>("rendering");
@@ -27,8 +28,7 @@ int main([[maybe_unused]] int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    auto renderingDevice =
-        renderingPlugin->createRenderingDevice(renderingWindow.get(), renderingPluginConfig.device.validation);
+    auto renderingDevice = renderingWindow->createRenderingDevice(renderingPluginConfig.device.validation);
     if (!renderingDevice) {
         std::cerr << "failed to create rendering device" << std::endl;
         return EXIT_FAILURE;
