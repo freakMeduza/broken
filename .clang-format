@@ -2,6 +2,7 @@
 BasedOnStyle: LLVM
 BinPackArguments: false
 BinPackParameters: OnePerLine
+BreakTemplateDeclarations: Yes
 PointerAlignment: Left
 AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: false

@@ -6,22 +6,14 @@
 
 namespace broken {
 
-class Configuration {
+class configuration {
 public:
-    explicit Configuration(const std::string& configurationPath);
-
-    Configuration(const Configuration&) = delete;
-    Configuration& operator=(const Configuration&) = delete;
-
-    ~Configuration() noexcept;
-
     bool load(const std::string& configurationPath);
 
     bool save(const std::string& configurationPath);
 
-    inline bool save() { return save(m_configurationPath); }
-
-    template <typename T> [[nodiscard]] inline T get(const std::string& jsonKey) {
+    template <typename T>
+    [[nodiscard]] inline T get(const std::string& jsonKey) {
         if (m_json.contains(jsonKey)) {
             try {
                 return m_json[jsonKey].get<T>();
@@ -34,12 +26,14 @@ public:
         return m_json[jsonKey];
     }
 
-    template <typename T> inline void set(const std::string& jsonKey, T&& json) { m_json[jsonKey] = json; }
+    template <typename T>
+    inline void set(const std::string& jsonKey, T&& json) {
+        m_json[jsonKey] = json;
+    }
 
-    friend std::ostream& operator<<(std::ostream& os, const Configuration& c);
+    friend std::ostream& operator<<(std::ostream& os, const configuration& c);
 
 private:
-    std::string m_configurationPath;
     nlohmann::ordered_json m_json;
 };
 

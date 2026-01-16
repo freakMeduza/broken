@@ -9,8 +9,7 @@
 
 namespace broken {
 
-struct PipelineBuilder {
-public:
+struct vulkan_rendering_pipeline_builder {
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStageCreateInfos;
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
     vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
@@ -31,7 +30,7 @@ public:
         colorAttachmentFormat = vk::Format::eUndefined;
     }
 
-    vk::UniquePipeline buildGraphicsPipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
+    vk::UniquePipeline make_graphics_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
         vk::PipelineViewportStateCreateInfo viewportStateCreateInfo;
         viewportStateCreateInfo.viewportCount = 1;
         viewportStateCreateInfo.scissorCount = 1;
@@ -69,7 +68,7 @@ public:
         return std::move(pipeline);
     }
 
-    vk::UniquePipeline buildComputePipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
+    vk::UniquePipeline make_compute_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
         vk::ComputePipelineCreateInfo computePipelineCreateInfo;
         computePipelineCreateInfo.layout = pipelineLayout;
         computePipelineCreateInfo.setStage(!shaderStageCreateInfos.empty() ? shaderStageCreateInfos[0]
@@ -79,7 +78,7 @@ public:
         return std::move(pipeline);
     }
 
-    void setShader(vk::ShaderModule shaderModule, vk::ShaderStageFlagBits shaderStage) {
+    void add_shader(vk::ShaderModule shaderModule, vk::ShaderStageFlagBits shaderStage) {
         vk::PipelineShaderStageCreateInfo shaderStageCreateInfo{};
         shaderStageCreateInfo.stage = shaderStage;
         shaderStageCreateInfo.module = shaderModule;
@@ -87,22 +86,22 @@ public:
         shaderStageCreateInfos.emplace_back(shaderStageCreateInfo);
     }
 
-    void setInputTopology(vk::PrimitiveTopology topology) {
+    void set_input_topology(vk::PrimitiveTopology topology) {
         inputAssemblyStateCreateInfo.topology = topology;
         inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
     }
 
-    void setPolygonMode(vk::PolygonMode mode) {
+    void set_polygon_mode(vk::PolygonMode mode) {
         rasterizationStateCreateInfo.polygonMode = mode;
         rasterizationStateCreateInfo.lineWidth = 1.f;
     }
 
-    void setCullMode(vk::CullModeFlags cullMode, vk::FrontFace frontFace) {
+    void set_cull_mode(vk::CullModeFlags cullMode, vk::FrontFace frontFace) {
         rasterizationStateCreateInfo.cullMode = cullMode;
         rasterizationStateCreateInfo.frontFace = frontFace;
     }
 
-    void disableMultisampling() {
+    void disable_multisampling() {
         multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
         // multisampling defaulted to no multisampling (1 sample per pixel)
         multisampleStateCreateInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
@@ -113,7 +112,7 @@ public:
         multisampleStateCreateInfo.alphaToOneEnable = VK_FALSE;
     }
 
-    void disableBlending() {
+    void disable_blending() {
         // default write mask
         colorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                                                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
@@ -121,7 +120,7 @@ public:
         colorBlendAttachmentState.blendEnable = VK_FALSE;
     }
 
-    void enableBlendingAdditive() {
+    void enable_blending_additive() {
         colorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                                                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
         colorBlendAttachmentState.blendEnable = VK_TRUE;
@@ -133,7 +132,7 @@ public:
         colorBlendAttachmentState.alphaBlendOp = vk::BlendOp::eAdd;
     }
 
-    void enableBlendingAlphaBlend() {
+    void enable_blending_alpha_blend() {
         colorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                                                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
         colorBlendAttachmentState.blendEnable = VK_TRUE;
@@ -145,16 +144,16 @@ public:
         colorBlendAttachmentState.alphaBlendOp = vk::BlendOp::eAdd;
     }
 
-    void setColorAttachmentFormat(vk::Format format) {
+    void set_color_attachment_format(vk::Format format) {
         colorAttachmentFormat = format;
         // connect the format to the renderInfo  structure
         renderingCreateInfo.colorAttachmentCount = 1;
         renderingCreateInfo.pColorAttachmentFormats = &colorAttachmentFormat;
     }
 
-    void setDepthAttachmentFormat(vk::Format format) { renderingCreateInfo.depthAttachmentFormat = format; }
+    void set_depth_attachment_format(vk::Format format) { renderingCreateInfo.depthAttachmentFormat = format; }
 
-    void disableDepthTest() {
+    void disable_depth_test() {
         depthStencilStateCreateInfo.depthTestEnable = VK_FALSE;
         depthStencilStateCreateInfo.depthWriteEnable = VK_FALSE;
         depthStencilStateCreateInfo.depthCompareOp = vk::CompareOp::eNever;
@@ -164,7 +163,7 @@ public:
         depthStencilStateCreateInfo.maxDepthBounds = 1.f;
     }
 
-    void enableDepthTest(bool depthWriteEnable, vk::CompareOp op) {
+    void enable_depth_test(bool depthWriteEnable, vk::CompareOp op) {
         depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
         depthStencilStateCreateInfo.depthWriteEnable = depthWriteEnable;
         depthStencilStateCreateInfo.depthCompareOp = op;
@@ -175,8 +174,7 @@ public:
     }
 };
 
-VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* device,
-                                                 const std::string& shaderFileName) {
+vulkan_rendering_compute_pipeline::vulkan_rendering_compute_pipeline(vk::Device logicalDevice, const char* shaderPath) {
     vk::DescriptorPoolSize descriptorPoolSize;
     descriptorPoolSize.setType(vk::DescriptorType::eStorageImage);
     descriptorPoolSize.setDescriptorCount(1);
@@ -185,7 +183,7 @@ VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* de
     descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
     descriptorPoolCreateInfo.setMaxSets(10);
     descriptorPoolCreateInfo.setPoolSizes({descriptorPoolSize});
-    m_descriptorPool = device->getLogicalDevice().createDescriptorPoolUnique(descriptorPoolCreateInfo);
+    descriptorPool = logicalDevice.createDescriptorPoolUnique(descriptorPoolCreateInfo);
 
     vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding;
     descriptorSetLayoutBinding.setBinding(0);
@@ -195,13 +193,13 @@ VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* de
 
     vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
     descriptorSetLayoutCreateInfo.setBindings({descriptorSetLayoutBinding});
-    m_descriptorSetLayout = device->getLogicalDevice().createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
+    descriptorSetLayout = logicalDevice.createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
 
     vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
-    descriptorSetAllocateInfo.setDescriptorPool(m_descriptorPool.get());
+    descriptorSetAllocateInfo.setDescriptorPool(descriptorPool.get());
     descriptorSetAllocateInfo.setDescriptorSetCount(1);
-    descriptorSetAllocateInfo.setSetLayouts({m_descriptorSetLayout.get()});
-    m_descriptorSet = std::move(device->getLogicalDevice().allocateDescriptorSetsUnique(descriptorSetAllocateInfo)[0]);
+    descriptorSetAllocateInfo.setSetLayouts({descriptorSetLayout.get()});
+    descriptorSet = std::move(logicalDevice.allocateDescriptorSetsUnique(descriptorSetAllocateInfo)[0]);
 
     vk::PushConstantRange pushConstantRange;
     pushConstantRange.setStageFlags(vk::ShaderStageFlagBits::eCompute);
@@ -209,21 +207,21 @@ VulkanRenderingPipeline::VulkanRenderingPipeline(const VulkanRenderingDevice* de
     pushConstantRange.setOffset(0);
 
     vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-    pipelineLayoutCreateInfo.setSetLayouts({m_descriptorSetLayout.get()});
+    pipelineLayoutCreateInfo.setSetLayouts({descriptorSetLayout.get()});
     pipelineLayoutCreateInfo.setPushConstantRanges({pushConstantRange});
 
-    m_pipelineLayout = device->getLogicalDevice().createPipelineLayoutUnique(pipelineLayoutCreateInfo);
+    pipelineLayout = logicalDevice.createPipelineLayoutUnique(pipelineLayoutCreateInfo);
 
-    SpvShaderCompiler compiler;
-    auto shaderCode = compiler.glslToSpvVulkan(shaderFileName);
+    spv_shader_compiler compiler;
+    auto shaderCode = compiler.glsl_to_spv_vulkan(shaderPath);
     vk::ShaderModuleCreateInfo shaderModuleCreateInfo;
     shaderModuleCreateInfo.setCode(shaderCode);
-    vk::UniqueShaderModule shaderModule = device->getLogicalDevice().createShaderModuleUnique(shaderModuleCreateInfo);
+    vk::UniqueShaderModule shaderModule = logicalDevice.createShaderModuleUnique(shaderModuleCreateInfo);
 
-    PipelineBuilder builder;
-    builder.setShader(shaderModule.get(), vk::ShaderStageFlagBits::eCompute);
+    vulkan_rendering_pipeline_builder builder;
+    builder.add_shader(shaderModule.get(), vk::ShaderStageFlagBits::eCompute);
 
-    m_pipeline = builder.buildComputePipeline(device->getLogicalDevice(), m_pipelineLayout.get());
+    pipeline = builder.make_compute_pipeline(logicalDevice, pipelineLayout.get());
 }
 
 } // namespace broken

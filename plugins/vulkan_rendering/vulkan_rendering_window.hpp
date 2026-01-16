@@ -5,33 +5,33 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <vector>
-
 namespace broken {
 
-class VulkanRenderingWindow final : public RenderingWindow {
+class vulkan_renderiing_window final : public rendering_window {
 public:
-    explicit VulkanRenderingWindow(int width, int height, const std::string& title, bool resizable, bool fullscreen);
+    explicit vulkan_renderiing_window(int width, int height, const char* title, bool resizable, bool fullscreen);
 
-    VulkanRenderingWindow(const VulkanRenderingWindow&) = delete;
-    VulkanRenderingWindow& operator=(const VulkanRenderingWindow&) = delete;
+    vulkan_renderiing_window(const vulkan_renderiing_window&) = delete;
+    vulkan_renderiing_window& operator=(const vulkan_renderiing_window&) = delete;
 
-    ~VulkanRenderingWindow() noexcept override;
+    ~vulkan_renderiing_window() noexcept override;
 
-    VkSurfaceKHR createSurface(VkInstance instance) const noexcept;
+    virtual int width() const override;
 
-    std::vector<const char*> getRequiredInstanceExtensions() const noexcept;
+    virtual int height() const override;
 
-    virtual int getWidth() const override;
+    virtual bool process_events() override;
 
-    virtual int getHeight() const override;
+    virtual rendering_device* device() const override;
 
-    virtual bool processEvents() override;
+    VkSurfaceKHR make_vulkan_window_surface(VkInstance instance) const noexcept;
 
-    virtual std::unique_ptr<RenderingDevice> createRenderingDevice(bool enableValidationLayers) const override;
+    std::vector<const char*> required_vulkan_instance_extensions() const noexcept;
 
 private:
     GLFWwindow* m_window = nullptr;
+
+    std::unique_ptr<class vulkan_rendering_device> m_device;
 };
 
 } // namespace broken

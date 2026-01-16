@@ -51,7 +51,7 @@ $ cmake --build build --target sandbox
 
 ## Sandbox
 
-To configure the sandbox application, you need to use a configuration file. Place it next to the executable file with name *sandbox.json*, or it will be created automatically on first run. You can also use the cmake option to automatically generate a *sandbox.json* file for the specific template.
+To configure the sandbox application, you need to use a configuration file. Place it next to the executable file with name *sandbox.json*. You can also use the cmake option to automatically generate a *sandbox.json* file for the specific template.
 
 Set up cmake option ```SANDBOX_GENERATE_TEMPLATE_BLANK``` to generate blank configuration file
 

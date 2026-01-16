@@ -5,16 +5,16 @@
 
 namespace broken {
 
-class SpvShaderCompiler {
+class spv_shader_compiler {
 public:
-    SpvShaderCompiler();
+    spv_shader_compiler();
 
-    SpvShaderCompiler(const SpvShaderCompiler&) = delete;
-    SpvShaderCompiler& operator=(const SpvShaderCompiler&) = delete;
+    spv_shader_compiler(const spv_shader_compiler&) = delete;
+    spv_shader_compiler& operator=(const spv_shader_compiler&) = delete;
 
-    ~SpvShaderCompiler();
+    ~spv_shader_compiler();
 
-    [[nodiscard]] std::vector<uint32_t> glslToSpvVulkan(const std::string& path) const;
+    [[nodiscard]] std::vector<uint32_t> glsl_to_spv_vulkan(const std::string& path) const;
 };
 
 } // namespace broken

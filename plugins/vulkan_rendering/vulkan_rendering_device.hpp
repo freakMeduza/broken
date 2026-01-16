@@ -4,35 +4,35 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include "vulkan_rendering_pipeline.hpp"
+
 namespace broken {
 
-class VulkanRenderingWindow;
-class VulkanRenderingDevice final : public RenderingDevice {
+class vulkan_renderiing_window;
+class vulkan_rendering_device final : public rendering_device {
 public:
-    explicit VulkanRenderingDevice(const VulkanRenderingWindow* window, bool enableValidationLayers);
+    explicit vulkan_rendering_device(const vulkan_renderiing_window* window, bool enableValidationLayers);
 
-    VulkanRenderingDevice(const VulkanRenderingDevice&) = delete;
-    VulkanRenderingDevice& operator=(const VulkanRenderingDevice&) = delete;
+    vulkan_rendering_device(const vulkan_rendering_device&) = delete;
+    vulkan_rendering_device& operator=(const vulkan_rendering_device&) = delete;
 
-    ~VulkanRenderingDevice() noexcept override = default;
+    virtual ~vulkan_rendering_device() noexcept override;
 
-    inline vk::Device getLogicalDevice() const noexcept { return m_logicalDevice.get(); }
+    virtual void begin() override;
 
-private:
-    virtual void beginRendering() override;
+    virtual void end() override;
 
-    virtual void endRendering() override;
+    virtual void clear(const rendering_color& color) override;
 
-    virtual void clear(const RenderingColor& color) override;
-
-    virtual void bind(RenderingPipeline* pipeline) override;
+    virtual void bind(resource_handle<rendering_compute_pipeline> handle) override;
 
     virtual void dispatch() override;
 
-    virtual void waitIdle() override;
+    virtual resource_handle<rendering_compute_pipeline> make_compute_pipeline(const char* shaderPath) override;
 
-    virtual std::unique_ptr<RenderingPipeline> createRenderingPipeline(const std::string& path) const override;
+    virtual void release_compute_pipeline(resource_handle<rendering_compute_pipeline> handle) override;
 
+private:
     vk::UniqueInstance m_instance;
     vk::UniqueDebugUtilsMessengerEXT m_debugMessenger;
     uint32_t m_graphicsQueueFamilyIndex = vk::QueueFamilyIgnored;
@@ -40,12 +40,13 @@ private:
     vk::UniqueDevice m_logicalDevice;
     vk::Queue m_graphicsQueue;
     vk::UniqueSurfaceKHR m_surface;
-    vk::PresentModeKHR m_presentMode = vk::PresentModeKHR::eFifo;
-    vk::Format m_imageFormat = vk::Format::eUndefined;
-    vk::Extent2D m_imageExtent;
+    vk::PresentModeKHR m_swapchainPresentMode = vk::PresentModeKHR::eFifo;
+    vk::Format m_swapchainImageFormat = vk::Format::eUndefined;
+    vk::Extent2D m_swapchainImageExtent;
     vk::UniqueSwapchainKHR m_swapchain;
-    std::vector<vk::Image> m_images;
-    std::vector<vk::UniqueImageView> m_imageViews;
+    std::vector<vk::Image> m_swapchainImages;
+    std::vector<vk::UniqueImageView> m_swapchainImageViews;
+
     vk::UniqueCommandPool m_commandPool;
     vk::UniqueCommandBuffer m_commandBuffer;
     std::vector<vk::UniqueSemaphore> m_renderFinishedSemaphores;
@@ -53,17 +54,19 @@ private:
     vk::UniqueFence m_inFlightFence;
     uint32_t m_imageIndex = (uint32_t)-1;
 
-    [[nodiscard]] static vk::PipelineStageFlags2KHR getStageFlagsForLayout(vk::ImageLayout layout);
+    [[nodiscard]] static vk::PipelineStageFlags2KHR stage_flags_for_layout(vk::ImageLayout layout);
 
-    [[nodiscard]] static vk::AccessFlags2KHR getAccessFlagsForLayout(vk::ImageLayout layout);
+    [[nodiscard]] static vk::AccessFlags2KHR access_flags_for_layout(vk::ImageLayout layout);
 
-    static void transitionImageLayout(vk::CommandBuffer commandBuffer,
-                                      vk::Image image,
-                                      vk::Format format,
-                                      vk::ImageLayout oldLayout,
-                                      vk::ImageLayout newLayout,
-                                      uint32_t mipLevels = 1,
-                                      uint32_t arrayLayers = 1);
+    static void transition_image_layout(vk::CommandBuffer commandBuffer,
+                                        vk::Image image,
+                                        vk::Format format,
+                                        vk::ImageLayout oldLayout,
+                                        vk::ImageLayout newLayout,
+                                        uint32_t mipLevels = 1,
+                                        uint32_t arrayLayers = 1);
+
+    resource_registry<rendering_compute_pipeline, vulkan_rendering_compute_pipeline> m_computePipelines{16};
 };
 
 } // namespace broken

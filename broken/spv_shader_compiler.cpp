@@ -10,7 +10,7 @@
 
 namespace broken {
 
-static std::vector<uint32_t> glslToSpv(glslang::TShader& shader, EShMessages messages) {
+static std::vector<uint32_t> glsl_to_spv(glslang::TShader& shader, EShMessages messages) {
     std::vector<uint32_t> spirv;
 
     const TBuiltInResource* resources = GetDefaultResources();
@@ -33,7 +33,7 @@ static std::vector<uint32_t> glslToSpv(glslang::TShader& shader, EShMessages mes
     return spirv;
 }
 
-static std::vector<uint32_t> glslToVulkan(const std::string& source, EShLanguage stage) {
+static std::vector<uint32_t> glsl_to_vulkan(const std::string& source, EShLanguage stage) {
     const char* str = source.c_str();
 
     glslang::TShader shader(stage);
@@ -48,18 +48,18 @@ static std::vector<uint32_t> glslToVulkan(const std::string& source, EShLanguage
     // shader.setEnvClient(glslang::EShClientOpenGL, glslang::EShTargetOpenGL_450);
     // shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_0);
 
-    return glslToSpv(shader, (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules));
+    return glsl_to_spv(shader, (EShMessages)(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules));
 }
 
-SpvShaderCompiler::SpvShaderCompiler() {
+spv_shader_compiler::spv_shader_compiler() {
     glslang::InitializeProcess();
 }
 
-SpvShaderCompiler::~SpvShaderCompiler() {
+spv_shader_compiler::~spv_shader_compiler() {
     glslang::FinalizeProcess();
 }
 
-std::vector<uint32_t> SpvShaderCompiler::glslToSpvVulkan(const std::string& path) const {
+std::vector<uint32_t> spv_shader_compiler::glsl_to_spv_vulkan(const std::string& path) const {
     std::fstream file(path, std::ios::binary | std::ios::in);
     if (!file.is_open()) {
         std::cerr << "failed to open shader file " << path << " for reading" << std::endl;
@@ -83,7 +83,7 @@ std::vector<uint32_t> SpvShaderCompiler::glslToSpvVulkan(const std::string& path
 
     std::string source((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 
-    return glslToVulkan(source, stage);
+    return glsl_to_vulkan(source, stage);
 }
 
 } // namespace broken

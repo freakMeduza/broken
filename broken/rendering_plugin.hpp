@@ -1,84 +1,68 @@
 #pragma once
 
 #include "plugin.hpp"
-
-#include <nlohmann/json.hpp>
+#include "resource.hpp"
 
 namespace broken {
 
-class RenderingDevice;
-class RenderingWindow {
-public:
-    virtual ~RenderingWindow() noexcept = default;
+// Resource Tags
+struct rendering_compute_pipeline {};
 
-    [[nodiscard]] virtual int getWidth() const = 0;
-
-    [[nodiscard]] virtual int getHeight() const = 0;
-
-    [[nodiscard]] virtual bool processEvents() = 0;
-
-    [[nodiscard]] virtual std::unique_ptr<RenderingDevice> createRenderingDevice(bool enableValidationLayers) const = 0;
+struct rendering_color {
+    float r;
+    float g;
+    float b;
+    float a;
 };
 
-class RenderingPipeline {
+class rendering_device {
 public:
-    virtual ~RenderingPipeline() noexcept = default;
-};
+    virtual ~rendering_device() noexcept = default;
 
-using RenderingColor = std::array<float, 4>;
+    virtual void begin() = 0;
 
-class RenderingDevice {
-public:
-    virtual ~RenderingDevice() noexcept = default;
+    virtual void end() = 0;
 
-    virtual void beginRendering() = 0;
+    virtual void clear(const rendering_color& color) = 0;
 
-    virtual void endRendering() = 0;
-
-    virtual void clear(const RenderingColor& color) = 0;
-
-    virtual void bind(RenderingPipeline* pipeline) = 0;
+    virtual void bind(resource_handle<rendering_compute_pipeline> handle) = 0;
 
     virtual void dispatch() = 0;
 
-    virtual void waitIdle() = 0;
+    [[nodiscard]] virtual resource_handle<rendering_compute_pipeline> make_compute_pipeline(const char* shaderPath) = 0;
 
-    [[nodiscard]] virtual std::unique_ptr<RenderingPipeline> createRenderingPipeline(const std::string& path) const = 0;
+    virtual void release_compute_pipeline(resource_handle<rendering_compute_pipeline> handle) = 0;
 };
 
-class RenderingPlugin : public Plugin {
+class rendering_window {
 public:
-    [[nodiscard]] virtual std::unique_ptr<RenderingWindow>
-    createRenderingWindow(int width, int height, const std::string& title, bool resizable, bool fullscreen) const = 0;
+    virtual ~rendering_window() noexcept = default;
+
+    [[nodiscard]] virtual int width() const = 0;
+
+    [[nodiscard]] virtual int height() const = 0;
+
+    [[nodiscard]] virtual bool process_events() = 0;
+
+    [[nodiscard]] virtual rendering_device* device() const = 0;
 };
 
-struct RenderingWindowConfig {
-    int width = 800;
-    int height = 800;
-    bool resizable = false;
-    bool fullscreen = false;
-    std::string title = "broken";
-    // FIXME: enable support 'resizable' and 'fullscreen' features in configuration file
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(RenderingWindowConfig, width, height /*, resizable, fullscreen*/, title)
-};
+class rendering_plugin : public plugin {
+public:
+    [[nodiscard]] inline auto
+    make_rendering_window_unique(int width, int height, const char* title, bool resizable, bool fullscreen) const {
+        using deleter =
+            plugin_resource_deleter<rendering_plugin, rendering_window, &rendering_plugin::release_rendering_window>;
 
-struct RenderingDeviceConfig {
-    bool validation = false;
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(RenderingDeviceConfig, validation)
-};
+        return std::unique_ptr<rendering_window, deleter>(
+            make_rendering_window(width, height, title, resizable, fullscreen), deleter(this));
+    }
 
-struct RenderingPipelineConfig {
-    std::string path;
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(RenderingPipelineConfig, path)
-};
+protected:
+    [[nodiscard]] virtual rendering_window*
+    make_rendering_window(int width, int height, const char* title, bool resizable, bool fullscreen) const = 0;
 
-struct RenderingPluginConfig {
-    std::string name;
-    std::string path;
-    RenderingWindowConfig window;
-    RenderingDeviceConfig device;
-    std::vector<RenderingPipelineConfig> pipelines;
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(RenderingPluginConfig, name, path, window, device, pipelines)
+    virtual void release_rendering_window(rendering_window* window) const = 0;
 };
 
 } // namespace broken

@@ -4,23 +4,7 @@
 
 namespace broken {
 
-Configuration::Configuration(const std::string& configurationPath) : m_configurationPath(configurationPath) {
-    if (!load(m_configurationPath)) {
-        std::cerr << "failed to load configuration: " << m_configurationPath << std::endl;
-
-        if (!save()) {
-            std::cerr << "failed to save configuration: " << m_configurationPath << std::endl;
-        }
-    }
-}
-
-Configuration::~Configuration() noexcept {
-    if (!save(m_configurationPath)) {
-        std::cerr << "failed to save configuration: " << m_configurationPath << std::endl;
-    }
-}
-
-bool Configuration::load(const std::string& configurationPath) {
+bool configuration::load(const std::string& configurationPath) {
     std::fstream file(configurationPath, std::ios::binary | std::ios::in);
     if (file.is_open()) {
         try {
@@ -34,7 +18,7 @@ bool Configuration::load(const std::string& configurationPath) {
     return false;
 }
 
-bool Configuration::save(const std::string& configurationPath) {
+bool configuration::save(const std::string& configurationPath) {
     std::fstream file(configurationPath, std::ios::binary | std::ios::out);
     if (file.is_open()) {
         file << m_json.dump(4);
@@ -44,8 +28,8 @@ bool Configuration::save(const std::string& configurationPath) {
     return false;
 }
 
-std::ostream& operator<<(std::ostream& os, const Configuration& c) {
-    os << c.m_configurationPath << ":\n" << c.m_json.dump(4);
+std::ostream& operator<<(std::ostream& os, const configuration& c) {
+    os << c.m_json.dump(4);
     return os;
 }
 
