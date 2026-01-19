@@ -1,14 +1,17 @@
 ---
 BasedOnStyle: LLVM
 BinPackArguments: false
-BinPackParameters: OnePerLine
+# BinPackParameters: OnePerLine
+BinPackParameters: false
 BreakTemplateDeclarations: Yes
 PointerAlignment: Left
 AllowShortBlocksOnASingleLine: Never
 AllowShortCaseLabelsOnASingleLine: false
-AllowShortFunctionsOnASingleLine: Inline
+AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+PenaltyBreakBeforeFirstCallParameter: 1
 IndentWidth: 4
 AccessModifierOffset: -4
 ColumnLimit: 120

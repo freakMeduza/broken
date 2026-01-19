@@ -1,36 +1,56 @@
-#include "vulkan_rendering_pipeline.hpp"
-
-#include "vulkan_rendering_device.hpp"
-#include <broken/spv_shader_compiler.hpp>
+#pragma once
+#include "vk_device.hpp"
 
 #include <fstream>
-#include <iostream>
-#include <sstream>
+#include <string>
 
-namespace broken {
+namespace broken::vulkan {
 
-struct vulkan_rendering_pipeline_builder {
+static std::vector<uint32_t> load_spv(const std::string& filename) {
+    if (auto file = std::fstream(filename, std::ios::in | std::ios::binary); file.is_open()) {
+        file.seekg(0, std::ios::end);
+        auto size = (size_t)file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<uint32_t> buffer(size / sizeof(uint32_t));
+        file.read(reinterpret_cast<char*>(buffer.data()), size);
+        return buffer;
+    }
+    return {};
+}
+
+struct pipeline_builder {
     std::vector<vk::PipelineShaderStageCreateInfo> shaderStageCreateInfos;
     vk::PipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo;
+    vk::PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo;
     vk::PipelineRasterizationStateCreateInfo rasterizationStateCreateInfo;
     vk::PipelineColorBlendAttachmentState colorBlendAttachmentState;
     vk::PipelineMultisampleStateCreateInfo multisampleStateCreateInfo;
     vk::PipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo;
-    vk::PipelineRenderingCreateInfo renderingCreateInfo;
-    vk::Format colorAttachmentFormat;
+
+    vk::Format colorAttachmentFormat = vk::Format::eUndefined;
+    vk::Format depthAttachmentFormat = vk::Format::eUndefined;
 
     void reset() {
         shaderStageCreateInfos.clear();
         inputAssemblyStateCreateInfo = vk::PipelineInputAssemblyStateCreateInfo{};
+        vertexInputStateCreateInfo = vk::PipelineVertexInputStateCreateInfo{};
         rasterizationStateCreateInfo = vk::PipelineRasterizationStateCreateInfo{};
         colorBlendAttachmentState = vk::PipelineColorBlendAttachmentState{};
         multisampleStateCreateInfo = vk::PipelineMultisampleStateCreateInfo{};
         depthStencilStateCreateInfo = vk::PipelineDepthStencilStateCreateInfo{};
-        renderingCreateInfo = vk::PipelineRenderingCreateInfo{};
         colorAttachmentFormat = vk::Format::eUndefined;
+        depthAttachmentFormat = vk::Format::eUndefined;
     }
 
-    vk::UniquePipeline make_graphics_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
+    vk::UniquePipeline build_graphics_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
+        vk::PipelineRenderingCreateInfo renderingCreateInfo;
+        if (colorAttachmentFormat != vk::Format::eUndefined) {
+            renderingCreateInfo.setColorAttachmentFormats(colorAttachmentFormat);
+        }
+        if (depthAttachmentFormat != vk::Format::eUndefined) {
+            renderingCreateInfo.setDepthAttachmentFormat(depthAttachmentFormat);
+        }
+
         vk::PipelineViewportStateCreateInfo viewportStateCreateInfo;
         viewportStateCreateInfo.viewportCount = 1;
         viewportStateCreateInfo.scissorCount = 1;
@@ -41,12 +61,7 @@ struct vulkan_rendering_pipeline_builder {
         colorBlendStateCreateInfo.attachmentCount = 1;
         colorBlendStateCreateInfo.pAttachments = &colorBlendAttachmentState;
 
-        // completely clear VertexInputStateCreateInfo, as we have no need for
-        // it
-        vk::PipelineVertexInputStateCreateInfo vertexInputStateCreateInfo;
-
         vk::DynamicState states[] = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-
         vk::PipelineDynamicStateCreateInfo dynamicStateCreateInfo;
         dynamicStateCreateInfo.setDynamicStates(states);
 
@@ -64,18 +79,16 @@ struct vulkan_rendering_pipeline_builder {
         pipelineCreateInfo.layout = pipelineLayout;
         pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 
-        auto [result, pipeline] = logicalDevice.createGraphicsPipelineUnique(nullptr, pipelineCreateInfo);
-        return std::move(pipeline);
+        return std::move(logicalDevice.createGraphicsPipelineUnique(nullptr, pipelineCreateInfo).value);
     }
 
-    vk::UniquePipeline make_compute_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
+    vk::UniquePipeline build_compute_pipeline(vk::Device logicalDevice, vk::PipelineLayout pipelineLayout) const {
         vk::ComputePipelineCreateInfo computePipelineCreateInfo;
         computePipelineCreateInfo.layout = pipelineLayout;
         computePipelineCreateInfo.setStage(!shaderStageCreateInfos.empty() ? shaderStageCreateInfos[0]
                                                                            : vk::PipelineShaderStageCreateInfo{});
 
-        auto [result, pipeline] = logicalDevice.createComputePipelineUnique(nullptr, computePipelineCreateInfo);
-        return std::move(pipeline);
+        return std::move(logicalDevice.createComputePipelineUnique(nullptr, computePipelineCreateInfo).value);
     }
 
     void add_shader(vk::ShaderModule shaderModule, vk::ShaderStageFlagBits shaderStage) {
@@ -91,6 +104,12 @@ struct vulkan_rendering_pipeline_builder {
         inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
     }
 
+    void set_vertex_input(const vk::VertexInputBindingDescription& bind,
+                          vk::ArrayProxy<const vk::VertexInputAttributeDescription> attr) {
+        vertexInputStateCreateInfo.setVertexBindingDescriptions(bind);
+        vertexInputStateCreateInfo.setVertexAttributeDescriptions(attr);
+    }
+
     void set_polygon_mode(vk::PolygonMode mode) {
         rasterizationStateCreateInfo.polygonMode = mode;
         rasterizationStateCreateInfo.lineWidth = 1.f;
@@ -103,20 +122,16 @@ struct vulkan_rendering_pipeline_builder {
 
     void disable_multisampling() {
         multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
-        // multisampling defaulted to no multisampling (1 sample per pixel)
         multisampleStateCreateInfo.rasterizationSamples = vk::SampleCountFlagBits::e1;
         multisampleStateCreateInfo.minSampleShading = 1.0f;
         multisampleStateCreateInfo.pSampleMask = nullptr;
-        // no alpha to coverage either
         multisampleStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
         multisampleStateCreateInfo.alphaToOneEnable = VK_FALSE;
     }
 
     void disable_blending() {
-        // default write mask
         colorBlendAttachmentState.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
                                                    vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-        // no blending
         colorBlendAttachmentState.blendEnable = VK_FALSE;
     }
 
@@ -146,12 +161,11 @@ struct vulkan_rendering_pipeline_builder {
 
     void set_color_attachment_format(vk::Format format) {
         colorAttachmentFormat = format;
-        // connect the format to the renderInfo  structure
-        renderingCreateInfo.colorAttachmentCount = 1;
-        renderingCreateInfo.pColorAttachmentFormats = &colorAttachmentFormat;
     }
 
-    void set_depth_attachment_format(vk::Format format) { renderingCreateInfo.depthAttachmentFormat = format; }
+    void set_depth_attachment_format(vk::Format format) {
+        depthAttachmentFormat = format;
+    }
 
     void disable_depth_test() {
         depthStencilStateCreateInfo.depthTestEnable = VK_FALSE;
@@ -159,69 +173,19 @@ struct vulkan_rendering_pipeline_builder {
         depthStencilStateCreateInfo.depthCompareOp = vk::CompareOp::eNever;
         depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
         depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
-        depthStencilStateCreateInfo.minDepthBounds = 0.f;
-        depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+        depthStencilStateCreateInfo.minDepthBounds = 0.0f;
+        depthStencilStateCreateInfo.maxDepthBounds = 1.0f;
     }
 
-    void enable_depth_test(bool depthWriteEnable, vk::CompareOp op) {
+    void enable_depth_test(bool writeEnable = true, vk::CompareOp compareOp = vk::CompareOp::eLess) {
         depthStencilStateCreateInfo.depthTestEnable = VK_TRUE;
-        depthStencilStateCreateInfo.depthWriteEnable = depthWriteEnable;
-        depthStencilStateCreateInfo.depthCompareOp = op;
+        depthStencilStateCreateInfo.depthWriteEnable = writeEnable ? VK_TRUE : VK_FALSE;
+        depthStencilStateCreateInfo.depthCompareOp = compareOp;
         depthStencilStateCreateInfo.depthBoundsTestEnable = VK_FALSE;
         depthStencilStateCreateInfo.stencilTestEnable = VK_FALSE;
-        depthStencilStateCreateInfo.minDepthBounds = 0.f;
-        depthStencilStateCreateInfo.maxDepthBounds = 1.f;
+        depthStencilStateCreateInfo.minDepthBounds = 0.0f;
+        depthStencilStateCreateInfo.maxDepthBounds = 1.0f;
     }
 };
 
-vulkan_rendering_compute_pipeline::vulkan_rendering_compute_pipeline(vk::Device logicalDevice, const char* shaderPath) {
-    vk::DescriptorPoolSize descriptorPoolSize;
-    descriptorPoolSize.setType(vk::DescriptorType::eStorageImage);
-    descriptorPoolSize.setDescriptorCount(1);
-
-    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
-    descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-    descriptorPoolCreateInfo.setMaxSets(10);
-    descriptorPoolCreateInfo.setPoolSizes({descriptorPoolSize});
-    descriptorPool = logicalDevice.createDescriptorPoolUnique(descriptorPoolCreateInfo);
-
-    vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding;
-    descriptorSetLayoutBinding.setBinding(0);
-    descriptorSetLayoutBinding.setDescriptorCount(1);
-    descriptorSetLayoutBinding.setDescriptorType(vk::DescriptorType::eStorageImage);
-    descriptorSetLayoutBinding.setStageFlags(vk::ShaderStageFlagBits::eCompute);
-
-    vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
-    descriptorSetLayoutCreateInfo.setBindings({descriptorSetLayoutBinding});
-    descriptorSetLayout = logicalDevice.createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
-
-    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
-    descriptorSetAllocateInfo.setDescriptorPool(descriptorPool.get());
-    descriptorSetAllocateInfo.setDescriptorSetCount(1);
-    descriptorSetAllocateInfo.setSetLayouts({descriptorSetLayout.get()});
-    descriptorSet = std::move(logicalDevice.allocateDescriptorSetsUnique(descriptorSetAllocateInfo)[0]);
-
-    vk::PushConstantRange pushConstantRange;
-    pushConstantRange.setStageFlags(vk::ShaderStageFlagBits::eCompute);
-    pushConstantRange.setSize(sizeof(float));
-    pushConstantRange.setOffset(0);
-
-    vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-    pipelineLayoutCreateInfo.setSetLayouts({descriptorSetLayout.get()});
-    pipelineLayoutCreateInfo.setPushConstantRanges({pushConstantRange});
-
-    pipelineLayout = logicalDevice.createPipelineLayoutUnique(pipelineLayoutCreateInfo);
-
-    spv_shader_compiler compiler;
-    auto shaderCode = compiler.glsl_to_spv_vulkan(shaderPath);
-    vk::ShaderModuleCreateInfo shaderModuleCreateInfo;
-    shaderModuleCreateInfo.setCode(shaderCode);
-    vk::UniqueShaderModule shaderModule = logicalDevice.createShaderModuleUnique(shaderModuleCreateInfo);
-
-    vulkan_rendering_pipeline_builder builder;
-    builder.add_shader(shaderModule.get(), vk::ShaderStageFlagBits::eCompute);
-
-    pipeline = builder.make_compute_pipeline(logicalDevice, pipelineLayout.get());
-}
-
-} // namespace broken
+} // namespace broken::vulkan

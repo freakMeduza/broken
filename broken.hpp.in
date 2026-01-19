@@ -1,0 +1,13 @@
+#pragma once
+constexpr auto BROKEN_PROJECT = "@PROJECT_NAME@";
+constexpr auto BROKEN_VERSION = "@PROJECT_VERSION@";
+// clang-format off
+constexpr auto BROKEN_VERSION_MAJOR = @PROJECT_VERSION_MAJOR@;
+constexpr auto BROKEN_VERSION_MINOR = @PROJECT_VERSION_MINOR@;
+constexpr auto BROKEN_VERSION_PATCH = @PROJECT_VERSION_PATCH@;
+// clang-format om
+#cmakedefine BROKEN_USE_VULKAN
+constexpr auto BROKEN_PROJECT_SCENE = "@PROJECT_SCENE@";
+constexpr auto BROKEN_SHADER_VERT = "@PROJECT_SHADER_VERT@";
+constexpr auto BROKEN_SHADER_FRAG = "@PROJECT_SHADER_FRAG@";
+constexpr auto BROKEN_SHADER_COMP = "@PROJECT_SHADER_COMP@";
