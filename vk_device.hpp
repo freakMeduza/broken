@@ -1,6 +1,8 @@
 #pragma once
 #include <vulkan/vulkan.hpp>
 
+#include <functional>
+
 struct GLFWwindow;
 
 namespace broken::vulkan {
@@ -38,6 +40,8 @@ public:
                              vk::Extent2D srcSize,
                              vk::Extent2D dstSize) const noexcept;
 
+    void immediate_submit(std::function<void(vk::CommandBuffer)>&& function);
+
     vk::UniqueInstance instance;
     vk::PhysicalDevice physicalDevice;
     vk::UniqueDevice logicalDevice;
@@ -62,6 +66,9 @@ public:
     vk::UniqueImageView colorImageView;
     vk::Format colorFormat = vk::Format::eR16G16B16A16Sfloat;
     vk::Extent2D colorExtent;
+
+    vk::UniqueCommandPool commandPool;
+    vk::CommandBuffer commandBuffer;
 
     void recreate_swapchain(const vk::Extent2D& extent, vk::UniqueSwapchainKHR oldSwapchain);
 

@@ -7,11 +7,13 @@
 
 namespace broken::vulkan {
 
-struct gpu_scene_data {
-    alignas(16) glm::mat4 viewProj;
-    alignas(16) glm::mat4 invViewProj;
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::vec4 sunDirection;
+struct alignas(16) gpu_scene_data {
+    glm::mat4 viewProj;
+    glm::mat4 invViewProj;
+    glm::mat4 model;
+    glm::vec4 sunDirection;
+    vk::DeviceAddress ssboAddress;
+    uint32_t ssboOffset;
 };
 
 struct renderer {
@@ -38,16 +40,25 @@ struct renderer {
     vk::UniquePipelineLayout graphicsPipelineLayout;
     vk::UniquePipeline graphicsPipeline;
 
+    const vk::DeviceSize ssboMaxSizeBytes = 256 * 1024 * 1024; // 256 Mb
+
+    struct {
+        vk::UniqueBuffer buffer;
+        vk::UniqueDeviceMemory memory;
+        vk::DeviceAddress address;
+        vk::DeviceSize currentAllocatedBytes = 0;
+    } ssbo;
+
     struct gpu_mesh_data {
-        vk::UniqueBuffer vertexBuffer;
-        vk::UniqueDeviceMemory vertexBufferMemory;
+        vk::DeviceAddress ssboAddress;
+        uint32_t ssboOffset;
         vk::UniqueBuffer indexBuffer;
         vk::UniqueDeviceMemory indexBufferMemory;
         uint32_t indexCount;
     };
 
     mutable std::unordered_map<const broken::mesh*, gpu_mesh_data> meshCache;
-    const gpu_mesh_data& get_or_create_gpu_mesh_data(const broken::mesh& cpuMesh) const noexcept;
+    const gpu_mesh_data& get_or_create_gpu_mesh_data(const broken::mesh& cpuMesh) noexcept;
 };
 
 } // namespace broken::vulkan

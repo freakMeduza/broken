@@ -212,6 +212,11 @@ device::device(GLFWwindow* window) noexcept {
 
     create_color_buffer(swapchainExtent);
     create_depth_buffer(swapchainExtent);
+
+    commandPool = logicalDevice->createCommandPoolUnique(
+        vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0));
+    commandBuffer = logicalDevice->allocateCommandBuffers(
+        vk::CommandBufferAllocateInfo(commandPool.get(), vk::CommandBufferLevel::ePrimary, 1))[0];
 }
 
 void device::recreate_swapchain(const vk::Extent2D& extent, vk::UniqueSwapchainKHR oldSwapchain) {
@@ -356,6 +361,16 @@ void device::create_buffer(vk::DeviceSize size,
     buffer = logicalDevice->createBufferUnique(bufferInfo);
     vk::MemoryRequirements memReqs = logicalDevice->getBufferMemoryRequirements(buffer.get());
     vk::MemoryAllocateInfo allocInfo(memReqs.size, find_memory_type(memReqs.memoryTypeBits, properties));
+
+    vk::MemoryAllocateFlagsInfo flagsInfo;
+    if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress) {
+        flagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
+        // #if defined(_DEBUG)
+        //         flagsInfo.flags |= vk::MemoryAllocateFlagBits::eDeviceAddressCaptureReplay;
+        // #endif
+        allocInfo.pNext = &flagsInfo;
+    }
+
     memory = logicalDevice->allocateMemoryUnique(allocInfo);
     logicalDevice->bindBufferMemory(buffer.get(), memory.get(), 0);
 }
@@ -431,6 +446,23 @@ void device::copy_image_to_image(vk::CommandBuffer cmd,
     blitInfo.pRegions = &blitRegion;
 
     cmd.blitImage2(blitInfo);
+}
+
+void device::immediate_submit(std::function<void(vk::CommandBuffer)>&& function) {
+    commandBuffer.reset();
+    commandBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+    function(commandBuffer);
+    commandBuffer.end();
+
+    vk::CommandBufferSubmitInfo commandBufferSubmitInfo;
+    commandBufferSubmitInfo.setCommandBuffer(commandBuffer);
+    commandBufferSubmitInfo.setDeviceMask(0);
+
+    vk::SubmitInfo2 submitInfo;
+    submitInfo.setCommandBufferInfos(commandBufferSubmitInfo);
+
+    graphicsQueue.submit2(submitInfo);
+    graphicsQueue.waitIdle();
 }
 
 vk::PipelineStageFlags2KHR device::stage_flags_for_layout(vk::ImageLayout layout) const noexcept {

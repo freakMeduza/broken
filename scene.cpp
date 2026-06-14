@@ -56,7 +56,6 @@ parse_node(const fastgltf::Asset& asset, size_t nodeIndex, const glm::mat4& pare
                 fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
                     asset, posAccessor, [&](fastgltf::math::fvec3 pos, size_t index) {
                         obj.mesh.vertices[index].position = glm::vec3(pos.x(), pos.y(), pos.z());
-                        obj.mesh.vertices[index].color = glm::vec3(0.8f);
                     });
             } else {
                 broken_error("Primitive {} is missing POSITION attribute!", primIndex);
@@ -70,16 +69,6 @@ parse_node(const fastgltf::Asset& asset, size_t nodeIndex, const glm::mat4& pare
                 fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
                     asset, normAccessor, [&](fastgltf::math::fvec3 norm, size_t index) {
                         obj.mesh.vertices[index].normal = glm::vec3(norm.x(), norm.y(), norm.z());
-                    });
-            }
-
-            auto colorIt = primitive.findAttribute("COLOR_0");
-            if (colorIt != primitive.attributes.end()) {
-                const fastgltf::Accessor& colorAccessor = asset.accessors[colorIt->accessorIndex];
-
-                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
-                    asset, colorAccessor, [&](fastgltf::math::fvec4 col, size_t index) {
-                        obj.mesh.vertices[index].color = glm::vec3(col.x(), col.y(), col.z());
                     });
             }
 

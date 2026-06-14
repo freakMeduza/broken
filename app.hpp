@@ -78,6 +78,12 @@ int run() {
         scene->viewMatrix =
             glm::lookAt(glm::vec3(0.0f, 130.f, 400.f), glm::vec3(0.0f, 130.f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
+        for (auto& [cpuMesh, transform] : scene->objects) {
+            for (auto& v : cpuMesh.vertices) {
+                v.color = glm::vec4(1.f, 0.f, 1.f, 1.f);
+            }
+        }
+
         T renderer{window};
 
         float lastFrame = static_cast<float>(glfwGetTime());

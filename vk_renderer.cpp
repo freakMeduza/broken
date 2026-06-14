@@ -109,16 +109,17 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
         builder.set_color_attachment_format(device.colorFormat);
         builder.set_depth_attachment_format(device.depthFormat);
 
-        const auto bind = vk::VertexInputBindingDescription{0, sizeof(vertex), vk::VertexInputRate::eVertex};
-        const auto attr = std::array<vk::VertexInputAttributeDescription, 3>{
-            vk::VertexInputAttributeDescription{0, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, position)},
-            vk::VertexInputAttributeDescription{1, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, normal)},
-            vk::VertexInputAttributeDescription{2, 0, vk::Format::eR32G32B32Sfloat, offsetof(vertex, color)},
-        };
-        builder.set_vertex_input(bind, attr);
-
         graphicsPipeline = builder.build_graphics_pipeline(device.logicalDevice.get(), graphicsPipelineLayout.get());
     }
+
+    device.create_buffer(ssboMaxSizeBytes,
+                         vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                             vk::BufferUsageFlagBits::eTransferDst,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal,
+                         ssbo.buffer,
+                         ssbo.memory);
+
+    ssbo.address = device.logicalDevice->getBufferAddress({*ssbo.buffer});
 }
 
 void renderer::draw(const broken::scene& scene) {
@@ -208,12 +209,12 @@ void renderer::draw(const broken::scene& scene) {
 
     sceneData.viewProj = scene.projMatrix * scene.viewMatrix;
     for (const auto& [cpuMesh, transform] : scene.objects) {
+        const auto& gpuMesh = get_or_create_gpu_mesh_data(cpuMesh);
+        sceneData.ssboAddress = gpuMesh.ssboAddress;
+        sceneData.ssboOffset = gpuMesh.ssboOffset;
         sceneData.model = transform;
         commandBuffer.pushConstants<gpu_scene_data>(
             graphicsPipelineLayout.get(), vk::ShaderStageFlagBits::eVertex, 0, sceneData);
-        const auto& gpuMesh = get_or_create_gpu_mesh_data(cpuMesh);
-        vk::DeviceSize offset = 0;
-        commandBuffer.bindVertexBuffers(0, gpuMesh.vertexBuffer.get(), offset);
         commandBuffer.bindIndexBuffer(gpuMesh.indexBuffer.get(), 0, vk::IndexType::eUint16);
         commandBuffer.drawIndexed(gpuMesh.indexCount, 1, 0, 0, 0);
     }
@@ -283,41 +284,62 @@ void renderer::draw(const broken::scene& scene) {
     device.graphicsQueue.waitIdle();
 }
 
-const renderer::gpu_mesh_data& renderer::get_or_create_gpu_mesh_data(const broken::mesh& cpuMesh) const noexcept {
+const renderer::gpu_mesh_data& renderer::get_or_create_gpu_mesh_data(const broken::mesh& cpuMesh) noexcept {
     auto it = meshCache.find(&cpuMesh);
     if (it != meshCache.end()) {
         return it->second;
     }
 
-    gpu_mesh_data gpuMesh{};
+    const auto vertexBufferSize = cpuMesh.vertices.size() * sizeof(cpuMesh.vertices[0]);
+    const auto indexBufferSize = cpuMesh.indices.size() * sizeof(cpuMesh.indices[0]);
+    const auto stagingBufferSize = vertexBufferSize + indexBufferSize;
+
+    vk::UniqueBuffer stagingBuffer;
+    vk::UniqueDeviceMemory stagingBufferMemory;
+    device.create_buffer(stagingBufferSize,
+                         vk::BufferUsageFlagBits::eTransferSrc,
+                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                         stagingBuffer,
+                         stagingBufferMemory);
+
+    void* data = device.logicalDevice->mapMemory(stagingBufferMemory.get(), 0, stagingBufferSize);
+
+    // Copy VBO data
+    std::memcpy(data, cpuMesh.vertices.data(), vertexBufferSize);
+    // Copy IBO data
+    std::memcpy((char*)data + vertexBufferSize, cpuMesh.indices.data(), indexBufferSize);
+
+    device.logicalDevice->unmapMemory(stagingBufferMemory.get());
+
+    gpu_mesh_data gpuMesh;
+
+    device.create_buffer(indexBufferSize,
+                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
+                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                         gpuMesh.indexBuffer,
+                         gpuMesh.indexBufferMemory);
+
+    device.immediate_submit([&](vk::CommandBuffer cmd) {
+        vk::BufferCopy vertexCopy{};
+        vertexCopy.srcOffset = 0;
+        vertexCopy.dstOffset = ssbo.currentAllocatedBytes;
+        vertexCopy.size = vertexBufferSize;
+        cmd.copyBuffer(stagingBuffer.get(), ssbo.buffer.get(), vertexCopy);
+
+        vk::BufferCopy indexCopy{};
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.dstOffset = 0;
+        indexCopy.size = indexBufferSize;
+        cmd.copyBuffer(stagingBuffer.get(), gpuMesh.indexBuffer.get(), indexCopy);
+    });
+
+    gpuMesh.ssboAddress = ssbo.address;
+    gpuMesh.ssboOffset = static_cast<uint32_t>(ssbo.currentAllocatedBytes / sizeof(vertex));
     gpuMesh.indexCount = static_cast<uint32_t>(cpuMesh.indices.size());
 
-    if (gpuMesh.indexCount > 0) {
-        vk::DeviceSize vertexBufferSize = cpuMesh.vertices.size() * sizeof(broken::vertex);
-        device.create_buffer(vertexBufferSize,
-                             vk::BufferUsageFlagBits::eVertexBuffer,
-                             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-                             gpuMesh.vertexBuffer,
-                             gpuMesh.vertexBufferMemory);
+    ssbo.currentAllocatedBytes += vertexBufferSize;
 
-        void* vertexData = device.logicalDevice->mapMemory(gpuMesh.vertexBufferMemory.get(), 0, vertexBufferSize);
-        std::memcpy(vertexData, cpuMesh.vertices.data(), vertexBufferSize);
-        device.logicalDevice->unmapMemory(gpuMesh.vertexBufferMemory.get());
-
-        vk::DeviceSize indexBufferSize = cpuMesh.indices.size() * sizeof(broken::mesh::index);
-        device.create_buffer(indexBufferSize,
-                             vk::BufferUsageFlagBits::eIndexBuffer,
-                             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-                             gpuMesh.indexBuffer,
-                             gpuMesh.indexBufferMemory);
-
-        void* indexData = device.logicalDevice->mapMemory(gpuMesh.indexBufferMemory.get(), 0, indexBufferSize);
-        std::memcpy(indexData, cpuMesh.indices.data(), indexBufferSize);
-        device.logicalDevice->unmapMemory(gpuMesh.indexBufferMemory.get());
-    }
-
-    auto [insertedIt, success] = meshCache.emplace(&cpuMesh, std::move(gpuMesh));
-    return insertedIt->second;
+    return meshCache.emplace(&cpuMesh, std::move(gpuMesh)).first->second;
 }
 
 } // namespace broken::vulkan
