@@ -5,12 +5,12 @@ struct GLFWwindow;
 
 namespace broken {
 struct scene;
-}
+} // namespace broken
 
 namespace broken::rhi {
 
 template <typename T>
-concept renderer_concept = requires(T& renderer, GLFWwindow* window, const scene& scene) {
+concept renderer_concept = requires(T& renderer, GLFWwindow* window, const broken::scene& scene) {
     T{window};
     { renderer.draw(scene) } -> std::same_as<void>;
 };

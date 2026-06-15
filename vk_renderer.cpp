@@ -2,7 +2,22 @@
 #include "vk_pipeline.hpp"
 #include <GLFW/glfw3.h>
 
+#include <fstream>
+#include <string>
+
 namespace broken::vulkan {
+
+static std::vector<uint32_t> load_spv(const std::string& filename) {
+    if (auto file = std::fstream(filename, std::ios::in | std::ios::binary); file.is_open()) {
+        file.seekg(0, std::ios::end);
+        auto size = (size_t)file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<uint32_t> buffer(size / sizeof(uint32_t));
+        file.read(reinterpret_cast<char*>(buffer.data()), size);
+        return buffer;
+    }
+    return {};
+}
 
 glm::vec3 calculate_sun_position(float time01) {
     float angle = time01 * 2.0f * glm::pi<float>();
@@ -136,8 +151,8 @@ void renderer::draw(const broken::scene& scene) {
                                    vk::ImageLayout::eUndefined,
                                    vk::ImageLayout::eGeneral);
 
-    glm::mat4 staticView = glm::mat4(glm::mat3(scene.viewMatrix));
-    glm::mat4 invViewProj = glm::inverse(scene.projMatrix * staticView);
+    glm::mat4 staticView = glm::mat4(glm::mat3(scene.camera.viewMatrix));
+    glm::mat4 invViewProj = glm::inverse(scene.camera.projMatrix * staticView);
 
     gpu_scene_data sceneData;
     sceneData.invViewProj = invViewProj;
@@ -207,7 +222,7 @@ void renderer::draw(const broken::scene& scene) {
 
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline.get());
 
-    sceneData.viewProj = scene.projMatrix * scene.viewMatrix;
+    sceneData.viewProj = scene.camera.projMatrix * scene.camera.viewMatrix;
     for (const auto& [cpuMesh, transform] : scene.objects) {
         const auto& gpuMesh = get_or_create_gpu_mesh_data(cpuMesh);
         sceneData.ssboAddress = gpuMesh.ssboAddress;
@@ -334,7 +349,7 @@ const renderer::gpu_mesh_data& renderer::get_or_create_gpu_mesh_data(const broke
     });
 
     gpuMesh.ssboAddress = ssbo.address;
-    gpuMesh.ssboOffset = static_cast<uint32_t>(ssbo.currentAllocatedBytes / sizeof(vertex));
+    gpuMesh.ssboOffset = static_cast<uint32_t>(ssbo.currentAllocatedBytes / sizeof(broken::mesh::vertex));
     gpuMesh.indexCount = static_cast<uint32_t>(cpuMesh.indices.size());
 
     ssbo.currentAllocatedBytes += vertexBufferSize;

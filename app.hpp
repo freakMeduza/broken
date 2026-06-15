@@ -72,18 +72,19 @@ int run() {
             }
         });
 
-    if (auto scene = broken::scene::load_from_file(BROKEN_PROJECT_SCENE)) {
-        scene->projMatrix = glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 1000.0f);
-        scene->projMatrix[1][1] *= -1.0f;
-        scene->viewMatrix =
-            glm::lookAt(glm::vec3(0.0f, 130.f, 400.f), glm::vec3(0.0f, 130.f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    broken::scene scene;
+    scene.camera = {
+        glm::perspective(glm::radians(45.0f), (float)width / height, 0.1f, 1000.0f),
+        glm::lookAt(glm::vec3(0.0f, 130.f, 400.f), glm::vec3(0.0f, 130.f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
+    };
 
-        for (auto& [cpuMesh, transform] : scene->objects) {
-            for (auto& v : cpuMesh.vertices) {
-                v.color = glm::vec4(1.f, 0.f, 1.f, 1.f);
-            }
-        }
+#if defined(BROKEN_USE_VULKAN)
+    scene.camera.projMatrix[1][1] *= -1.0f;
+#endif
 
+    scene.load_glTF(BROKEN_PROJECT_SCENE);
+
+    {
         T renderer{window};
 
         float lastFrame = static_cast<float>(glfwGetTime());
@@ -115,13 +116,13 @@ int run() {
             }
 
             float cycleTime = glm::mod((float)glfwGetTime() / 60.0f, 1.0f);
-            scene->sunDirection = calculate_sun_direction(cycleTime);
+            scene.sunDirection = calculate_sun_direction(cycleTime);
 
             angle += rotationSpeed * deltaTime;
-            for (auto& [cpuMesh, transform] : scene->objects)
+            for (auto& [cpuMesh, transform] : scene.objects)
                 transform = glm::rotate(glm::mat4(1.f), -angle, {0.f, 1.f, 0.f}) * preTransform;
 
-            renderer.draw(*scene);
+            renderer.draw(scene);
         }
     }
 
