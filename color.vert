@@ -24,13 +24,13 @@ layout(push_constant) uniform gpu_scene_data {
     mat4 invViewProj;
     mat4 model;
     vec4 sunDirection;
-    VertexBuffer ssboAddress;
+    VertexBuffer ssbo;
     uint ssboOffset;
 }
 scene;
 
 void main() {
-    Vertex v = scene.ssboAddress.vertices[gl_VertexIndex + scene.ssboOffset];
+    Vertex v = scene.ssbo.vertices[gl_VertexIndex + scene.ssboOffset];
 
     gl_Position = scene.viewProj * scene.model * vec4(v.position, 1.0);
 
