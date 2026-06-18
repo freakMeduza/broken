@@ -27,6 +27,7 @@ public:
                       vk::ImageUsageFlags usage,
                       vk::MemoryPropertyFlags properties,
                       vk::UniqueImage& image,
+                      vk::UniqueImageView& imageView,
                       vk::UniqueDeviceMemory& memory,
                       vk::ImageTiling tiling = vk::ImageTiling::eOptimal,
                       vk::ImageType imageType = vk::ImageType::e2D,
@@ -55,18 +56,6 @@ public:
     std::vector<vk::Image> swapchainImages;
     std::vector<vk::UniqueImageView> swapchainImageViews;
 
-    vk::UniqueImage depthImage;
-    vk::UniqueDeviceMemory depthImageMemory;
-    vk::UniqueImageView depthImageView;
-    vk::Format depthFormat = vk::Format::eD32Sfloat;
-    vk::Extent2D depthExtent;
-
-    vk::UniqueImage colorImage;
-    vk::UniqueDeviceMemory colorImageMemory;
-    vk::UniqueImageView colorImageView;
-    vk::Format colorFormat = vk::Format::eR16G16B16A16Sfloat;
-    vk::Extent2D colorExtent;
-
     vk::UniqueCommandPool commandPool;
     vk::CommandBuffer commandBuffer;
 
@@ -76,9 +65,6 @@ private:
 #if defined(_DEBUG)
     vk::UniqueDebugUtilsMessengerEXT debugMessenger;
 #endif
-
-    void create_color_buffer(const vk::Extent2D& extent);
-    void create_depth_buffer(const vk::Extent2D& extent);
 
     vk::PipelineStageFlags2KHR stage_flags_for_layout(vk::ImageLayout layout) const noexcept;
     vk::AccessFlags2KHR access_flags_for_layout(vk::ImageLayout layout) const noexcept;

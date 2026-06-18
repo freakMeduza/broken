@@ -19,18 +19,27 @@ layout(buffer_reference, std430) readonly buffer VertexBuffer {
     Vertex vertices[];
 };
 
+layout(buffer_reference, std430) readonly buffer IndexBuffer {
+    uint indices[];
+};
+
 layout(push_constant) uniform gpu_scene_data {
     mat4 viewProj;
     mat4 invViewProj;
     mat4 model;
     vec4 sunDirection;
-    VertexBuffer ssbo;
-    uint ssboOffset;
+    VertexBuffer vertexSSBODeviceAddress;
+    uint vertexSSBOOffset;
+    IndexBuffer indexSSBODeviceAddress;
+    uint indexSSBOOffset;
 }
 scene;
 
 void main() {
-    Vertex v = scene.ssbo.vertices[gl_VertexIndex + scene.ssboOffset];
+    uint globalIndexId = gl_VertexIndex + scene.indexSSBOOffset;
+    uint vertexIndex = scene.indexSSBODeviceAddress.indices[globalIndexId];
+    uint globalVertexId = vertexIndex + scene.vertexSSBOOffset;
+    Vertex v = scene.vertexSSBODeviceAddress.vertices[globalVertexId];
 
     gl_Position = scene.viewProj * scene.model * vec4(v.position, 1.0);
 

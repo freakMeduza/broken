@@ -61,8 +61,8 @@ void scene::load_glTF(const fs::path& path) {
                 const fastgltf::Accessor& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
                 indices.reserve(indices.size() + indexAccessor.count);
 
-                if (indexAccessor.count > 65535) {
-                    broken_warn("[glTF] Primitive has {} indices, which exceeds uint16_t capacity!",
+                if (indexAccessor.count > 0xFFFFFFFF) {
+                    broken_warn("[glTF] Primitive has {} indices, which exceeds uint32_t capacity!",
                                 indexAccessor.count);
                 }
 

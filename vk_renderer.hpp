@@ -13,8 +13,10 @@ struct alignas(16) gpu_scene_data {
     glm::mat4 invViewProj;
     glm::mat4 model;
     glm::vec4 sunDirection;
-    vk::DeviceAddress ssboAddress;
-    uint32_t ssboOffset;
+    vk::DeviceAddress vertexSSBODeviceAddress;
+    uint32_t vertexSSBOOffset;
+    vk::DeviceAddress indexSSBODeviceAddress;
+    uint32_t indexSSBOOffset;
 };
 
 struct renderer {
@@ -33,6 +35,30 @@ struct renderer {
     vk::UniqueSemaphore renderFinishedSemaphore;
     uint32_t imageIndex = (uint32_t)-1;
 
+    vk::UniqueImage depthImage;
+    vk::UniqueDeviceMemory depthImageMemory;
+    vk::UniqueImageView depthImageView;
+    vk::Format depthFormat;
+    vk::Extent2D depthExtent;
+
+    vk::UniqueImage colorImage;
+    vk::UniqueDeviceMemory colorImageMemory;
+    vk::UniqueImageView colorImageView;
+    vk::Format colorFormat;
+    vk::Extent2D colorExtent;
+
+    vk::UniqueBuffer vertexSSBO;
+    vk::UniqueDeviceMemory vertexSSBOMemory;
+    vk::DeviceAddress vertexSSBODeviceAddress;
+    vk::DeviceSize vertexSSBOSize;
+    vk::DeviceSize vertexSSBOCapacity;
+
+    vk::UniqueBuffer indexSSBO;
+    vk::UniqueDeviceMemory indexSSBOMemory;
+    vk::DeviceAddress indexSSBODeviceAddress;
+    vk::DeviceSize indexSSBOSize;
+    vk::DeviceSize indexSSBOCapacity;
+
     vk::UniqueDescriptorPool descriptorPool;
     vk::UniqueDescriptorSetLayout descriptorSetLayout;
     vk::UniqueDescriptorSet descriptorSet;
@@ -41,20 +67,11 @@ struct renderer {
     vk::UniquePipelineLayout graphicsPipelineLayout;
     vk::UniquePipeline graphicsPipeline;
 
-    const vk::DeviceSize ssboMaxSizeBytes = 256 * 1024 * 1024; // 256 Mb
-
-    struct {
-        vk::UniqueBuffer buffer;
-        vk::UniqueDeviceMemory memory;
-        vk::DeviceAddress address;
-        vk::DeviceSize currentAllocatedBytes = 0;
-    } ssbo;
-
     struct gpu_mesh_data {
-        vk::DeviceAddress ssboAddress;
-        uint32_t ssboOffset;
-        vk::UniqueBuffer indexBuffer;
-        vk::UniqueDeviceMemory indexBufferMemory;
+        vk::DeviceAddress vertexSSBODeviceAddress;
+        vk::DeviceAddress indexSSBODeviceAddress;
+        uint32_t vertexSSBOOffset;
+        uint32_t indexSSBOOffset;
         uint32_t indexCount;
     };
 

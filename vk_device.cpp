@@ -210,9 +210,6 @@ device::device(GLFWwindow* window) noexcept {
 
     recreate_swapchain({(uint32_t)width, (uint32_t)height}, {});
 
-    create_color_buffer(swapchainExtent);
-    create_depth_buffer(swapchainExtent);
-
     commandPool = logicalDevice->createCommandPoolUnique(
         vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0));
     commandBuffer = logicalDevice->allocateCommandBuffers(
@@ -250,20 +247,15 @@ void device::recreate_swapchain(const vk::Extent2D& extent, vk::UniqueSwapchainK
             : vk::CompositeAlphaFlagBitsKHR::eOpaque;
 
     if (surfaceCapabilities.currentExtent.width == (std::numeric_limits<uint32_t>::max)()) {
-        // If the surface size is undefined, the size is set to the size of the
-        // images requested.
         swapchainExtent.width = std::clamp(
             extent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
         swapchainExtent.height = std::clamp(
             extent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
     } else {
-        // If the surface size is defined, the swap chain size must match
         swapchainExtent = surfaceCapabilities.currentExtent;
     }
 
     uint32_t minImageCount = (std::max)(3u, surfaceCapabilities.minImageCount);
-    // Some drivers report maxImageCount as 0, so only clamp to max if it is
-    // valid.
     if (surfaceCapabilities.maxImageCount > 0) {
         minImageCount = (std::min)(minImageCount, surfaceCapabilities.maxImageCount);
     }
@@ -302,47 +294,6 @@ void device::recreate_swapchain(const vk::Extent2D& extent, vk::UniqueSwapchainK
     }
 }
 
-void device::create_color_buffer(const vk::Extent2D& extent) {
-    colorExtent = extent;
-    create_image(vk::Extent3D(colorExtent.width, colorExtent.height, 1),
-                 colorFormat,
-                 vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc |
-                     vk::ImageUsageFlagBits::eStorage,
-                 vk::MemoryPropertyFlagBits::eDeviceLocal,
-                 colorImage,
-                 colorImageMemory);
-
-    vk::ImageViewCreateInfo viewInfo = {
-        {},
-        colorImage.get(),
-        vk::ImageViewType::e2D,
-        colorFormat,
-        vk::ComponentMapping(),
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
-    };
-    colorImageView = logicalDevice->createImageViewUnique(viewInfo);
-}
-
-void device::create_depth_buffer(const vk::Extent2D& extent) {
-    depthExtent = extent;
-    create_image(vk::Extent3D(depthExtent.width, depthExtent.height, 1),
-                 depthFormat,
-                 vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                 vk::MemoryPropertyFlagBits::eDeviceLocal,
-                 depthImage,
-                 depthImageMemory);
-
-    vk::ImageViewCreateInfo viewInfo = {
-        {},
-        depthImage.get(),
-        vk::ImageViewType::e2D,
-        depthFormat,
-        vk::ComponentMapping(),
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1),
-    };
-    depthImageView = logicalDevice->createImageViewUnique(viewInfo);
-}
-
 uint32_t device::find_memory_type(uint32_t typeFilter, vk::MemoryPropertyFlags properties) const noexcept {
     vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
@@ -365,9 +316,6 @@ void device::create_buffer(vk::DeviceSize size,
     vk::MemoryAllocateFlagsInfo flagsInfo;
     if (usage & vk::BufferUsageFlagBits::eShaderDeviceAddress) {
         flagsInfo.flags = vk::MemoryAllocateFlagBits::eDeviceAddress;
-        // #if defined(_DEBUG)
-        //         flagsInfo.flags |= vk::MemoryAllocateFlagBits::eDeviceAddressCaptureReplay;
-        // #endif
         allocInfo.pNext = &flagsInfo;
     }
 
@@ -380,6 +328,7 @@ void device::create_image(vk::Extent3D extent,
                           vk::ImageUsageFlags usage,
                           vk::MemoryPropertyFlags properties,
                           vk::UniqueImage& image,
+                          vk::UniqueImageView& imageView,
                           vk::UniqueDeviceMemory& memory,
                           vk::ImageTiling tiling,
                           vk::ImageType imageType,
@@ -409,6 +358,44 @@ void device::create_image(vk::Extent3D extent,
     memory = logicalDevice->allocateMemoryUnique(allocInfo);
 
     logicalDevice->bindImageMemory(image.get(), memory.get(), 0);
+
+    vk::ImageAspectFlags aspectFlags;
+    if (usage & vk::ImageUsageFlagBits::eDepthStencilAttachment) {
+        if (format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint ||
+            format == vk::Format::eD16UnormS8Uint) {
+            aspectFlags = vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil;
+        } else {
+            aspectFlags = vk::ImageAspectFlagBits::eDepth;
+        }
+    } else {
+        aspectFlags = vk::ImageAspectFlagBits::eColor;
+    }
+
+    vk::ImageViewType viewType = vk::ImageViewType::e2D;
+    if (imageType == vk::ImageType::e1D) {
+        viewType = (arrayLayers > 1) ? vk::ImageViewType::e1DArray : vk::ImageViewType::e1D;
+    } else if (imageType == vk::ImageType::e2D) {
+        if (arrayLayers == 6) {
+            viewType = vk::ImageViewType::eCube;
+        } else if (arrayLayers > 6 && arrayLayers % 6 == 0) {
+            viewType = vk::ImageViewType::eCubeArray;
+        } else {
+            viewType = (arrayLayers > 1) ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D;
+        }
+    } else if (imageType == vk::ImageType::e3D) {
+        viewType = vk::ImageViewType::e3D;
+    }
+
+    vk::ImageViewCreateInfo viewInfo;
+    viewInfo.image = image.get();
+    viewInfo.viewType = viewType;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = mipLevels;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = arrayLayers;
+    imageView = logicalDevice->createImageViewUnique(viewInfo);
 }
 
 void device::copy_image_to_image(vk::CommandBuffer cmd,
@@ -514,8 +501,6 @@ void device::transition_image_layout(vk::CommandBuffer cmd,
                                      vk::ImageLayout newLayout,
                                      uint32_t mipLevels,
                                      uint32_t arrayLayers) const noexcept {
-    // Determine the stage and access masks using the new Synchronization 2
-    // flags
     vk::PipelineStageFlags2KHR srcStage = stage_flags_for_layout(oldLayout);
     vk::PipelineStageFlags2KHR dstStage = stage_flags_for_layout(newLayout);
     vk::AccessFlags2KHR srcAccess = access_flags_for_layout(oldLayout);

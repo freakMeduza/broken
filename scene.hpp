@@ -17,7 +17,7 @@ struct mesh {
         glm::vec4 color;
     };
 
-    using index = uint16_t;
+    using index = uint32_t;
 
     std::vector<vertex> vertices;
     std::vector<index> indices;

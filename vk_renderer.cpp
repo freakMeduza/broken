@@ -32,19 +32,40 @@ glm::vec3 calculate_sun_position(float time01) {
 }
 
 renderer::renderer(GLFWwindow* window) noexcept : device(window) {
-    int width = 0, height = 0;
-    glfwGetFramebufferSize(window, &width, &height);
-
+    // Create CommandBuffer
     commandPool = device.logicalDevice->createCommandPoolUnique(
         vk::CommandPoolCreateInfo(vk::CommandPoolCreateFlagBits::eResetCommandBuffer, 0));
-    commandBuffer = device.logicalDevice
-                        ->allocateCommandBuffers(
-                            vk::CommandBufferAllocateInfo(commandPool.get(), vk::CommandBufferLevel::ePrimary, 1))
-                        .front();
+    commandBuffer = device.logicalDevice->allocateCommandBuffers(
+        vk::CommandBufferAllocateInfo(commandPool.get(), vk::CommandBufferLevel::ePrimary, 1))[0];
 
+    // Create Synchronization
     imageAvailableSemaphore = device.logicalDevice->createSemaphoreUnique(vk::SemaphoreCreateInfo());
     renderFinishedSemaphore = device.logicalDevice->createSemaphoreUnique(vk::SemaphoreCreateInfo());
 
+    // Create ColorAttachment image
+    colorExtent = device.swapchainExtent;
+    colorFormat = vk::Format::eR16G16B16A16Sfloat;
+    device.create_image(vk::Extent3D(colorExtent.width, colorExtent.height, 1),
+                        colorFormat,
+                        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc |
+                            vk::ImageUsageFlagBits::eStorage,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                        colorImage,
+                        colorImageView,
+                        colorImageMemory);
+
+    // Create DepthAttachment image
+    depthExtent = device.swapchainExtent;
+    depthFormat = vk::Format::eD32Sfloat;
+    device.create_image(vk::Extent3D(depthExtent.width, depthExtent.height, 1),
+                        depthFormat,
+                        vk::ImageUsageFlagBits::eDepthStencilAttachment,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                        depthImage,
+                        depthImageView,
+                        depthImageMemory);
+
+    // Create DescriptorPool
     vk::DescriptorPoolSize descriptorPoolSize;
     descriptorPoolSize.setType(vk::DescriptorType::eStorageImage);
     descriptorPoolSize.setDescriptorCount(1);
@@ -55,6 +76,7 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
     descriptorPoolCreateInfo.setPoolSizes({descriptorPoolSize});
     descriptorPool = device.logicalDevice->createDescriptorPoolUnique(descriptorPoolCreateInfo);
 
+    // Create DescriptorSet with ColorAttachment image for the compute pipeline
     vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding;
     descriptorSetLayoutBinding.setBinding(0);
     descriptorSetLayoutBinding.setDescriptorCount(1);
@@ -72,14 +94,16 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
     descriptorSet = std::move(device.logicalDevice->allocateDescriptorSetsUnique(descriptorSetAllocateInfo)[0]);
 
     vk::DescriptorImageInfo descriptorImageInfo;
-    descriptorImageInfo.setImageView(device.colorImageView.get());
+    descriptorImageInfo.setImageView(colorImageView.get());
     descriptorImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
+
     vk::WriteDescriptorSet colorImageWrite;
     colorImageWrite.setDstBinding(0);
     colorImageWrite.setDstSet(descriptorSet.get());
     colorImageWrite.setDescriptorCount(1);
     colorImageWrite.setDescriptorType(vk::DescriptorType::eStorageImage);
     colorImageWrite.setImageInfo(descriptorImageInfo);
+
     device.logicalDevice->updateDescriptorSets({colorImageWrite}, {});
 
     // Create compute pipeline
@@ -121,20 +145,33 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
         builder.disable_multisampling();
         builder.disable_blending();
         builder.enable_depth_test(true, vk::CompareOp::eLess);
-        builder.set_color_attachment_format(device.colorFormat);
-        builder.set_depth_attachment_format(device.depthFormat);
+        builder.set_color_attachment_format(colorFormat);
+        builder.set_depth_attachment_format(depthFormat);
 
         graphicsPipeline = builder.build_graphics_pipeline(device.logicalDevice.get(), graphicsPipelineLayout.get());
     }
 
-    device.create_buffer(ssboMaxSizeBytes,
+    // Create static Vertex SSBO (Storage Shader Buffer Object)
+    vertexSSBOSize = 0;
+    vertexSSBOCapacity = 256 * 1024 * 1024; // 256 Mb
+    device.create_buffer(vertexSSBOCapacity,
                          vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
                              vk::BufferUsageFlagBits::eTransferDst,
                          vk::MemoryPropertyFlagBits::eDeviceLocal,
-                         ssbo.buffer,
-                         ssbo.memory);
+                         vertexSSBO,
+                         vertexSSBOMemory);
+    vertexSSBODeviceAddress = device.logicalDevice->getBufferAddress({*vertexSSBO});
 
-    ssbo.address = device.logicalDevice->getBufferAddress({*ssbo.buffer});
+    // Create static Index SSBO (Storage Shader Buffer Object)
+    indexSSBOSize = 0;
+    indexSSBOCapacity = 64 * 1024 * 1024; // 64 Mb (enough for ~33.5 million uint16_t indices)
+    device.create_buffer(indexSSBOCapacity,
+                         vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
+                             vk::BufferUsageFlagBits::eTransferDst,
+                         vk::MemoryPropertyFlagBits::eDeviceLocal,
+                         indexSSBO,
+                         indexSSBOMemory);
+    indexSSBODeviceAddress = device.logicalDevice->getBufferAddress({*indexSSBO});
 }
 
 void renderer::draw(const broken::scene& scene) {
@@ -145,11 +182,8 @@ void renderer::draw(const broken::scene& scene) {
     commandBuffer.reset();
     commandBuffer.begin(vk::CommandBufferBeginInfo());
 
-    device.transition_image_layout(commandBuffer,
-                                   device.colorImage.get(),
-                                   device.colorFormat,
-                                   vk::ImageLayout::eUndefined,
-                                   vk::ImageLayout::eGeneral);
+    device.transition_image_layout(
+        commandBuffer, colorImage.get(), colorFormat, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
     glm::mat4 staticView = glm::mat4(glm::mat3(scene.camera.viewMatrix));
     glm::mat4 invViewProj = glm::inverse(scene.camera.projMatrix * staticView);
@@ -164,38 +198,38 @@ void renderer::draw(const broken::scene& scene) {
     commandBuffer.pushConstants<gpu_scene_data>(
         computePipelineLayout.get(), vk::ShaderStageFlagBits::eCompute, 0, sceneData);
 
-    uint32_t groupCountX = (device.colorExtent.width + 15) / 16;
-    uint32_t groupCountY = (device.colorExtent.height + 15) / 16;
+    uint32_t groupCountX = (colorExtent.width + 15) / 16;
+    uint32_t groupCountY = (colorExtent.height + 15) / 16;
 
     commandBuffer.dispatch(groupCountX, groupCountY, 1);
 
     device.transition_image_layout(commandBuffer,
-                                   device.colorImage.get(),
-                                   device.colorFormat,
+                                   colorImage.get(),
+                                   colorFormat,
                                    vk::ImageLayout::eGeneral,
                                    vk::ImageLayout::eColorAttachmentOptimal);
 
     device.transition_image_layout(commandBuffer,
-                                   device.depthImage.get(),
-                                   device.depthFormat,
+                                   depthImage.get(),
+                                   depthFormat,
                                    vk::ImageLayout::eUndefined,
                                    vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
     vk::RenderingAttachmentInfo colorAttachment;
-    colorAttachment.setImageView(device.colorImageView.get());
+    colorAttachment.setImageView(colorImageView.get());
     colorAttachment.setImageLayout(vk::ImageLayout::eColorAttachmentOptimal);
     colorAttachment.setLoadOp(vk::AttachmentLoadOp::eLoad);
     colorAttachment.setStoreOp(vk::AttachmentStoreOp::eStore);
 
     vk::RenderingAttachmentInfo depthAttachment;
-    depthAttachment.setImageView(device.depthImageView.get());
+    depthAttachment.setImageView(depthImageView.get());
     depthAttachment.setImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal);
     depthAttachment.setLoadOp(vk::AttachmentLoadOp::eClear);
     depthAttachment.setStoreOp(vk::AttachmentStoreOp::eStore);
     depthAttachment.setClearValue(vk::ClearDepthStencilValue(1.0f, 0));
 
     vk::RenderingInfo renderingInfo;
-    renderingInfo.setRenderArea(vk::Rect2D({0, 0}, device.colorExtent));
+    renderingInfo.setRenderArea(vk::Rect2D({0, 0}, colorExtent));
     renderingInfo.setLayerCount(1);
     renderingInfo.setColorAttachments(colorAttachment);
     renderingInfo.setPDepthAttachment(&depthAttachment);
@@ -205,8 +239,8 @@ void renderer::draw(const broken::scene& scene) {
     vk::Viewport viewport = {
         0.0f,
         0.0f,
-        (float)device.colorExtent.width,
-        (float)device.colorExtent.height,
+        (float)colorExtent.width,
+        (float)colorExtent.height,
         0.0f,
         1.0f,
     };
@@ -215,7 +249,7 @@ void renderer::draw(const broken::scene& scene) {
 
     vk::Rect2D scissor = {
         {0, 0},
-        device.colorExtent,
+        colorExtent,
     };
 
     commandBuffer.setScissor(0, scissor);
@@ -225,20 +259,21 @@ void renderer::draw(const broken::scene& scene) {
     sceneData.viewProj = scene.camera.projMatrix * scene.camera.viewMatrix;
     for (const auto& [cpuMesh, transform] : scene.objects) {
         const auto& gpuMesh = get_or_create_gpu_mesh_data(cpuMesh);
-        sceneData.ssboAddress = gpuMesh.ssboAddress;
-        sceneData.ssboOffset = gpuMesh.ssboOffset;
+        sceneData.vertexSSBODeviceAddress = gpuMesh.vertexSSBODeviceAddress;
+        sceneData.vertexSSBOOffset = gpuMesh.vertexSSBOOffset;
+        sceneData.indexSSBODeviceAddress = gpuMesh.indexSSBODeviceAddress;
+        sceneData.indexSSBOOffset = gpuMesh.indexSSBOOffset;
         sceneData.model = transform;
         commandBuffer.pushConstants<gpu_scene_data>(
             graphicsPipelineLayout.get(), vk::ShaderStageFlagBits::eVertex, 0, sceneData);
-        commandBuffer.bindIndexBuffer(gpuMesh.indexBuffer.get(), 0, vk::IndexType::eUint16);
-        commandBuffer.drawIndexed(gpuMesh.indexCount, 1, 0, 0, 0);
+        commandBuffer.draw(gpuMesh.indexCount, 1, 0, 0);
     }
 
     commandBuffer.endRendering();
 
     device.transition_image_layout(commandBuffer,
-                                   device.colorImage.get(),
-                                   device.colorFormat,
+                                   colorImage.get(),
+                                   colorFormat,
                                    vk::ImageLayout::eColorAttachmentOptimal,
                                    vk::ImageLayout::eTransferSrcOptimal);
 
@@ -248,11 +283,8 @@ void renderer::draw(const broken::scene& scene) {
                                    vk::ImageLayout::eUndefined,
                                    vk::ImageLayout::eTransferDstOptimal);
 
-    device.copy_image_to_image(commandBuffer,
-                               device.colorImage.get(),
-                               device.swapchainImages[imageIndex],
-                               device.colorExtent,
-                               device.swapchainExtent);
+    device.copy_image_to_image(
+        commandBuffer, colorImage.get(), device.swapchainImages[imageIndex], colorExtent, device.swapchainExtent);
 
     device.transition_image_layout(commandBuffer,
                                    device.swapchainImages[imageIndex],
@@ -305,8 +337,8 @@ const renderer::gpu_mesh_data& renderer::get_or_create_gpu_mesh_data(const broke
         return it->second;
     }
 
-    const auto vertexBufferSize = cpuMesh.vertices.size() * sizeof(cpuMesh.vertices[0]);
-    const auto indexBufferSize = cpuMesh.indices.size() * sizeof(cpuMesh.indices[0]);
+    const auto vertexBufferSize = cpuMesh.vertices.size() * sizeof(broken::mesh::vertex);
+    const auto indexBufferSize = cpuMesh.indices.size() * sizeof(broken::mesh::index);
     const auto stagingBufferSize = vertexBufferSize + indexBufferSize;
 
     vk::UniqueBuffer stagingBuffer;
@@ -328,31 +360,28 @@ const renderer::gpu_mesh_data& renderer::get_or_create_gpu_mesh_data(const broke
 
     gpu_mesh_data gpuMesh;
 
-    device.create_buffer(indexBufferSize,
-                         vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst,
-                         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-                         gpuMesh.indexBuffer,
-                         gpuMesh.indexBufferMemory);
-
     device.immediate_submit([&](vk::CommandBuffer cmd) {
         vk::BufferCopy vertexCopy{};
         vertexCopy.srcOffset = 0;
-        vertexCopy.dstOffset = ssbo.currentAllocatedBytes;
+        vertexCopy.dstOffset = vertexSSBOSize;
         vertexCopy.size = vertexBufferSize;
-        cmd.copyBuffer(stagingBuffer.get(), ssbo.buffer.get(), vertexCopy);
+        cmd.copyBuffer(stagingBuffer.get(), vertexSSBO.get(), vertexCopy);
 
         vk::BufferCopy indexCopy{};
         indexCopy.srcOffset = vertexBufferSize;
-        indexCopy.dstOffset = 0;
+        indexCopy.dstOffset = indexSSBOSize;
         indexCopy.size = indexBufferSize;
-        cmd.copyBuffer(stagingBuffer.get(), gpuMesh.indexBuffer.get(), indexCopy);
+        cmd.copyBuffer(stagingBuffer.get(), indexSSBO.get(), indexCopy);
     });
 
-    gpuMesh.ssboAddress = ssbo.address;
-    gpuMesh.ssboOffset = static_cast<uint32_t>(ssbo.currentAllocatedBytes / sizeof(broken::mesh::vertex));
+    gpuMesh.vertexSSBODeviceAddress = vertexSSBODeviceAddress;
+    gpuMesh.vertexSSBOOffset = static_cast<uint32_t>(vertexSSBOSize / sizeof(broken::mesh::vertex));
+    gpuMesh.indexSSBODeviceAddress = indexSSBODeviceAddress;
+    gpuMesh.indexSSBOOffset = static_cast<uint32_t>(indexSSBOSize / sizeof(broken::mesh::index));
     gpuMesh.indexCount = static_cast<uint32_t>(cpuMesh.indices.size());
 
-    ssbo.currentAllocatedBytes += vertexBufferSize;
+    vertexSSBOSize += vertexBufferSize;
+    indexSSBOSize += indexBufferSize;
 
     return meshCache.emplace(&cpuMesh, std::move(gpuMesh)).first->second;
 }
