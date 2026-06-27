@@ -2,12 +2,19 @@
 
 layout(location = 0) in vec3 inColor;
 layout(location = 1) in vec3 inNormal;
-layout(location = 2) in vec3 inSunDirection;
+layout(location = 2) in vec2 inUV;
 
 layout(location = 0) out vec4 outColor;
 
+layout(set = 0, binding = 1) uniform scene_uniform_buffer {
+    mat4 viewMatrix;
+    mat4 projMatrix;
+    vec4 sunDirection;
+}
+scene;
+
 void main() {
-    vec3 lightDir = normalize(inSunDirection);
+    vec3 lightDir = normalize(scene.sunDirection.xyz);
     vec3 n = normalize(inNormal);
 
     float sunHeight = lightDir.y;

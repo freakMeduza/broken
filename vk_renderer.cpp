@@ -19,18 +19,6 @@ static std::vector<uint32_t> load_spv(const std::string& filename) {
     return {};
 }
 
-glm::vec3 calculate_sun_position(float time01) {
-    float angle = time01 * 2.0f * glm::pi<float>();
-    float latitude = 0.4f;
-
-    glm::vec3 dir;
-    dir.x = glm::cos(angle);
-    dir.z = glm::sin(angle);
-    dir.y = glm::sin(angle) * glm::cos(latitude) + glm::sin(latitude) * 0.2f;
-
-    return glm::normalize(dir);
-}
-
 renderer::renderer(GLFWwindow* window) noexcept : device(window) {
     // Create CommandBuffer
     commandPool = device.logicalDevice->createCommandPoolUnique(
@@ -65,92 +53,6 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
                         depthImageView,
                         depthImageMemory);
 
-    // Create DescriptorPool
-    vk::DescriptorPoolSize descriptorPoolSize;
-    descriptorPoolSize.setType(vk::DescriptorType::eStorageImage);
-    descriptorPoolSize.setDescriptorCount(1);
-
-    vk::DescriptorPoolCreateInfo descriptorPoolCreateInfo;
-    descriptorPoolCreateInfo.setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
-    descriptorPoolCreateInfo.setMaxSets(10);
-    descriptorPoolCreateInfo.setPoolSizes({descriptorPoolSize});
-    descriptorPool = device.logicalDevice->createDescriptorPoolUnique(descriptorPoolCreateInfo);
-
-    // Create DescriptorSet with ColorAttachment image for the compute pipeline
-    vk::DescriptorSetLayoutBinding descriptorSetLayoutBinding;
-    descriptorSetLayoutBinding.setBinding(0);
-    descriptorSetLayoutBinding.setDescriptorCount(1);
-    descriptorSetLayoutBinding.setDescriptorType(vk::DescriptorType::eStorageImage);
-    descriptorSetLayoutBinding.setStageFlags(vk::ShaderStageFlagBits::eCompute);
-
-    vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo;
-    descriptorSetLayoutCreateInfo.setBindings({descriptorSetLayoutBinding});
-    descriptorSetLayout = device.logicalDevice->createDescriptorSetLayoutUnique(descriptorSetLayoutCreateInfo);
-
-    vk::DescriptorSetAllocateInfo descriptorSetAllocateInfo;
-    descriptorSetAllocateInfo.setDescriptorPool(descriptorPool.get());
-    descriptorSetAllocateInfo.setDescriptorSetCount(1);
-    descriptorSetAllocateInfo.setSetLayouts({descriptorSetLayout.get()});
-    descriptorSet = std::move(device.logicalDevice->allocateDescriptorSetsUnique(descriptorSetAllocateInfo)[0]);
-
-    vk::DescriptorImageInfo descriptorImageInfo;
-    descriptorImageInfo.setImageView(colorImageView.get());
-    descriptorImageInfo.setImageLayout(vk::ImageLayout::eGeneral);
-
-    vk::WriteDescriptorSet colorImageWrite;
-    colorImageWrite.setDstBinding(0);
-    colorImageWrite.setDstSet(descriptorSet.get());
-    colorImageWrite.setDescriptorCount(1);
-    colorImageWrite.setDescriptorType(vk::DescriptorType::eStorageImage);
-    colorImageWrite.setImageInfo(descriptorImageInfo);
-
-    device.logicalDevice->updateDescriptorSets({colorImageWrite}, {});
-
-    // Create compute pipeline
-    {
-        vk::PushConstantRange pushRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(gpu_scene_data));
-
-        vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo;
-        pipelineLayoutCreateInfo.setSetLayouts({descriptorSetLayout.get()});
-        pipelineLayoutCreateInfo.setPushConstantRanges({pushRange});
-        computePipelineLayout = device.logicalDevice->createPipelineLayoutUnique(pipelineLayoutCreateInfo);
-
-        auto cCode = load_spv(BROKEN_SHADER_COMP);
-        auto cMod = device.logicalDevice->createShaderModuleUnique(
-            vk::ShaderModuleCreateInfo({}, cCode.size() * 4, cCode.data()));
-        pipeline_builder builder;
-        builder.add_shader(cMod.get(), vk::ShaderStageFlagBits::eCompute);
-        computePipeline = builder.build_compute_pipeline(device.logicalDevice.get(), computePipelineLayout.get());
-    }
-
-    // Create graphics pipeline
-    {
-        vk::PushConstantRange pushRange(vk::ShaderStageFlagBits::eVertex, 0, sizeof(gpu_scene_data));
-        graphicsPipelineLayout =
-            device.logicalDevice->createPipelineLayoutUnique(vk::PipelineLayoutCreateInfo({}, {}, pushRange));
-
-        auto vCode = load_spv(BROKEN_SHADER_VERT);
-        auto fCode = load_spv(BROKEN_SHADER_FRAG);
-        auto vMod = device.logicalDevice->createShaderModuleUnique(
-            vk::ShaderModuleCreateInfo({}, vCode.size() * 4, vCode.data()));
-        auto fMod = device.logicalDevice->createShaderModuleUnique(
-            vk::ShaderModuleCreateInfo({}, fCode.size() * 4, fCode.data()));
-
-        pipeline_builder builder;
-        builder.add_shader(vMod.get(), vk::ShaderStageFlagBits::eVertex);
-        builder.add_shader(fMod.get(), vk::ShaderStageFlagBits::eFragment);
-        builder.set_input_topology(vk::PrimitiveTopology::eTriangleList);
-        builder.set_polygon_mode(vk::PolygonMode::eFill);
-        builder.set_cull_mode(vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise);
-        builder.disable_multisampling();
-        builder.disable_blending();
-        builder.enable_depth_test(true, vk::CompareOp::eLess);
-        builder.set_color_attachment_format(colorFormat);
-        builder.set_depth_attachment_format(depthFormat);
-
-        graphicsPipeline = builder.build_graphics_pipeline(device.logicalDevice.get(), graphicsPipelineLayout.get());
-    }
-
     // Create static Vertex SSBO (Storage Shader Buffer Object)
     vertexSSBOSize = 0;
     vertexSSBOCapacity = 256 * 1024 * 1024; // 256 Mb
@@ -164,7 +66,7 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
 
     // Create static Index SSBO (Storage Shader Buffer Object)
     indexSSBOSize = 0;
-    indexSSBOCapacity = 64 * 1024 * 1024; // 64 Mb (enough for ~33.5 million uint16_t indices)
+    indexSSBOCapacity = 64 * 1024 * 1024; // 64 Mb (enough for ~16.7 million uint32_t indices)
     device.create_buffer(indexSSBOCapacity,
                          vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress |
                              vk::BufferUsageFlagBits::eTransferDst,
@@ -172,6 +74,130 @@ renderer::renderer(GLFWwindow* window) noexcept : device(window) {
                          indexSSBO,
                          indexSSBOMemory);
     indexSSBODeviceAddress = device.logicalDevice->getBufferAddress({*indexSSBO});
+
+    // Create Global Scene UBO (Uniform Buffer Object)
+    sceneUBOSize = 0;
+    sceneUBOCapacity = sizeof(scene_uniform_buffer);
+    device.create_buffer(sceneUBOCapacity,
+                         vk::BufferUsageFlagBits::eUniformBuffer,
+                         vk::MemoryPropertyFlagBits::eHostCoherent | vk::MemoryPropertyFlagBits::eHostVisible,
+                         sceneUBO,
+                         sceneUBOMemory);
+
+    // Create DescriptorPool
+    std::vector<vk::DescriptorPoolSize> descriptorPoolSizes;
+    descriptorPoolSizes.emplace_back(vk::DescriptorType::eStorageImage, 1);
+    descriptorPoolSizes.emplace_back(vk::DescriptorType::eUniformBuffer, 1);
+
+    descriptorPool = device.logicalDevice->createDescriptorPoolUnique({
+        vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+        10,
+        descriptorPoolSizes,
+    });
+
+    // Create DescriptorSet
+    std::vector<vk::DescriptorSetLayoutBinding> descriptorSetBindings;
+    descriptorSetBindings.emplace_back(0, vk::DescriptorType::eStorageImage, 1, vk::ShaderStageFlagBits::eCompute);
+    descriptorSetBindings.emplace_back(1,
+                                       vk::DescriptorType::eUniformBuffer,
+                                       1,
+                                       vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+    descriptorSetLayout = device.logicalDevice->createDescriptorSetLayoutUnique({{}, descriptorSetBindings});
+
+    descriptorSet = std::move(device.logicalDevice->allocateDescriptorSetsUnique({
+        descriptorPool.get(),
+        {descriptorSetLayout.get()},
+    })[0]);
+
+    // Write Descriptor Sets
+    vk::DescriptorImageInfo storageImageInfo{
+        {},
+        colorImageView.get(),
+        vk::ImageLayout::eGeneral,
+    };
+
+    vk::WriteDescriptorSet storageImageWrite{
+        descriptorSet.get(),
+        0,
+        0,
+        vk::DescriptorType::eStorageImage,
+        {storageImageInfo},
+    };
+
+    vk::DescriptorBufferInfo sceneBufferInfo{
+        sceneUBO.get(),
+        0,
+        VK_WHOLE_SIZE,
+    };
+
+    vk::WriteDescriptorSet sceneBufferWrite{
+        descriptorSet.get(),
+        1,
+        0,
+        vk::DescriptorType::eUniformBuffer,
+        {},
+        {sceneBufferInfo},
+    };
+
+    device.logicalDevice->updateDescriptorSets({storageImageWrite, sceneBufferWrite}, {});
+
+    pipeline_builder builder;
+    // Create compute pipeline
+    vk::PushConstantRange computePushRange{
+        vk::ShaderStageFlagBits::eCompute,
+        0,
+        sizeof(compute_constants),
+    };
+
+    vk::PipelineLayoutCreateInfo computePipelineLayoutCreateInfo{
+        {},
+        {descriptorSetLayout.get()},
+        {computePushRange},
+    };
+
+    computePipelineLayout = device.logicalDevice->createPipelineLayoutUnique(computePipelineLayoutCreateInfo);
+
+    const auto compShaderCode = load_spv(BROKEN_SHADER_COMP);
+    const auto compShaderModule = device.logicalDevice->createShaderModuleUnique(
+        {{}, compShaderCode.size() * sizeof(compShaderCode[0]), compShaderCode.data()});
+
+    builder.add_shader(compShaderModule.get(), vk::ShaderStageFlagBits::eCompute);
+
+    computePipeline = builder.build_compute_pipeline(device.logicalDevice.get(), computePipelineLayout.get());
+
+    builder.reset();
+    // Create graphics pipeline
+    vk::PushConstantRange graphicsPushRange(
+        vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, sizeof(scene_constants));
+
+    vk::PipelineLayoutCreateInfo graphicsPipelineLayoutCreateInfo{
+        {},
+        {descriptorSetLayout.get()},
+        {graphicsPushRange},
+    };
+
+    graphicsPipelineLayout = device.logicalDevice->createPipelineLayoutUnique(graphicsPipelineLayoutCreateInfo);
+
+    auto vertShaderCode = load_spv(BROKEN_SHADER_VERT);
+    auto fragShaderCode = load_spv(BROKEN_SHADER_FRAG);
+    auto vertShaderModule = device.logicalDevice->createShaderModuleUnique(
+        vk::ShaderModuleCreateInfo({}, vertShaderCode.size() * sizeof(vertShaderCode[0]), vertShaderCode.data()));
+    auto fragShaderModule = device.logicalDevice->createShaderModuleUnique(
+        vk::ShaderModuleCreateInfo({}, fragShaderCode.size() * sizeof(fragShaderCode[0]), fragShaderCode.data()));
+
+    builder.add_shader(vertShaderModule.get(), vk::ShaderStageFlagBits::eVertex);
+    builder.add_shader(fragShaderModule.get(), vk::ShaderStageFlagBits::eFragment);
+    builder.set_input_topology(vk::PrimitiveTopology::eTriangleList);
+    builder.set_polygon_mode(vk::PolygonMode::eFill);
+    builder.set_cull_mode(vk::CullModeFlagBits::eBack, vk::FrontFace::eCounterClockwise);
+    builder.disable_multisampling();
+    builder.disable_blending();
+    builder.enable_depth_test(true, vk::CompareOp::eLess);
+    builder.set_color_attachment_format(colorFormat);
+    builder.set_depth_attachment_format(depthFormat);
+
+    graphicsPipeline = builder.build_graphics_pipeline(device.logicalDevice.get(), graphicsPipelineLayout.get());
 }
 
 void renderer::draw(const broken::scene& scene) {
@@ -188,15 +214,14 @@ void renderer::draw(const broken::scene& scene) {
     glm::mat4 staticView = glm::mat4(glm::mat3(scene.camera.viewMatrix));
     glm::mat4 invViewProj = glm::inverse(scene.camera.projMatrix * staticView);
 
-    gpu_scene_data sceneData;
-    sceneData.invViewProj = invViewProj;
-    sceneData.sunDirection = glm::vec4(scene.sunDirection, 0.f);
-
+    compute_constants compPush;
+    compPush.data1 = invViewProj;
+    compPush.data2 = glm::vec4(scene.sunDirection, (float)glfwGetTime());
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, computePipeline.get());
     commandBuffer.bindDescriptorSets(
         vk::PipelineBindPoint::eCompute, computePipelineLayout.get(), 0, 1, &descriptorSet.get(), 0, nullptr);
-    commandBuffer.pushConstants<gpu_scene_data>(
-        computePipelineLayout.get(), vk::ShaderStageFlagBits::eCompute, 0, sceneData);
+    commandBuffer.pushConstants<compute_constants>(
+        computePipelineLayout.get(), vk::ShaderStageFlagBits::eCompute, 0, compPush);
 
     uint32_t groupCountX = (colorExtent.width + 15) / 16;
     uint32_t groupCountY = (colorExtent.height + 15) / 16;
@@ -254,18 +279,36 @@ void renderer::draw(const broken::scene& scene) {
 
     commandBuffer.setScissor(0, scissor);
 
+    // Update Global Scene UBO
+    scene_uniform_buffer sceneUBOData;
+    sceneUBOData.projMatrix = scene.camera.projMatrix;
+    sceneUBOData.viewMatrix = scene.camera.viewMatrix;
+    sceneUBOData.sunDirection = glm::vec4(scene.sunDirection, 0.f);
+    auto sceneUBOMemoryMapped = device.logicalDevice->mapMemory(sceneUBOMemory.get(), 0, sceneUBOCapacity);
+    std::memcpy(sceneUBOMemoryMapped, &sceneUBOData, sceneUBOCapacity);
+    device.logicalDevice->unmapMemory(sceneUBOMemory.get());
+
+    // Bind Global Scene UBO
+    commandBuffer.bindDescriptorSets(
+        vk::PipelineBindPoint::eGraphics, graphicsPipelineLayout.get(), 0, {descriptorSet.get()}, {});
+
     commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline.get());
 
-    sceneData.viewProj = scene.camera.projMatrix * scene.camera.viewMatrix;
     for (const auto& [cpuMesh, transform] : scene.objects) {
         const auto& gpuMesh = get_or_create_gpu_mesh_data(cpuMesh);
-        sceneData.vertexSSBODeviceAddress = gpuMesh.vertexSSBODeviceAddress;
-        sceneData.vertexSSBOOffset = gpuMesh.vertexSSBOOffset;
-        sceneData.indexSSBODeviceAddress = gpuMesh.indexSSBODeviceAddress;
-        sceneData.indexSSBOOffset = gpuMesh.indexSSBOOffset;
-        sceneData.model = transform;
-        commandBuffer.pushConstants<gpu_scene_data>(
-            graphicsPipelineLayout.get(), vk::ShaderStageFlagBits::eVertex, 0, sceneData);
+
+        scene_constants scenePush;
+        scenePush.modelMatrix = transform;
+        scenePush.vertexSSBODeviceAddress = gpuMesh.vertexSSBODeviceAddress;
+        scenePush.vertexSSBOOffset = gpuMesh.vertexSSBOOffset;
+        scenePush.indexSSBODeviceAddress = gpuMesh.indexSSBODeviceAddress;
+        scenePush.indexSSBOOffset = gpuMesh.indexSSBOOffset;
+        commandBuffer.pushConstants<scene_constants>(
+            graphicsPipelineLayout.get(),
+            vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+            0,
+            scenePush);
+
         commandBuffer.draw(gpuMesh.indexCount, 1, 0, 0);
     }
 

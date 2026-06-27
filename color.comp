@@ -1,0 +1,201 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(rgba16f, set = 0, binding = 0) uniform writeonly image2D outTexture;
+
+layout(push_constant) uniform compute_constants {
+    mat4 data1;
+    vec4 data2;
+    vec4 data3;
+    vec4 data4;
+    vec4 data5;
+}
+push;
+
+const int ITERATIONS = 7;
+const float BAILOUT = 2.0;
+const int AA = 2;
+mat3 rotMatrix;
+
+float map(vec3 p, out vec3 trapColor) {
+    vec3 w = rotMatrix * p;
+    float dr = 1.0;
+    float r = 0.0;
+
+    float curvature = 0.0;
+    int escapeIter = ITERATIONS;
+
+    // Mandelbulb power animation formula
+    float power = 3.0 + 5.0 * (sin(push.data2.w * 0.4) * 0.5 + 0.5);
+
+    for (int i = 0; i < ITERATIONS; i++) {
+        r = length(w);
+        if (r > BAILOUT) {
+            escapeIter = i;
+            break;
+        }
+
+        // Cartesian to Spherical coordinate transformation
+        float theta = acos(w.z / r);
+        float phi = atan(w.y, w.x);
+
+        // Mandelbulb running derivative computation for distance estimation
+        dr = pow(r, power - 1.0) * power * dr + 1.0;
+
+        float theta_old = theta;
+        float phi_old = phi;
+
+        // Spherical coordinate scaling and transformation logic
+        float zr = pow(r, power);
+        theta = theta * power;
+        phi = phi * power;
+
+        // Angular difference accumulation formula for surface curvature
+        curvature += abs(theta - theta_old) + abs(phi - phi_old);
+
+        // Spherical to Cartesian backward transformation with c offset addition
+        w = zr * vec3(sin(theta) * cos(phi), sin(phi) * sin(theta), cos(theta)) + (rotMatrix * p);
+    }
+
+    // scaling: boost frequency multipliers since curvature accumulates less
+    float mask1 = sin(curvature * 0.35 + push.data2.w * 0.4) * 0.5 + 0.5;
+    float mask2 = cos(curvature * 0.18 - push.data2.w * 0.2) * 0.5 + 0.5;
+
+    float growthMask = float(escapeIter) / float(ITERATIONS);
+
+    trapColor.r = mask1;
+    trapColor.g = mask2;
+    trapColor.b = growthMask;
+
+    // Standard Mandelbulb unbounding distance estimator formula
+    return 0.5 * log(r) * r / dr;
+}
+
+// Finite difference method for central numerical gradient estimation
+vec3 getNormal(vec3 p) {
+    vec3 t;
+    vec2 e = vec2(0.0002, 0.0);
+    return normalize(vec3(map(p + e.xyy, t) - map(p - e.xyy, t),
+                          map(p + e.yxy, t) - map(p - e.yxy, t),
+                          map(p + e.yyx, t) - map(p - e.yyx, t)));
+}
+
+const vec3 COLOR_BASE = vec3(0.82, 0.78, 0.95);   // Soft Lavender
+const vec3 COLOR_FOLDS = vec3(0.92, 0.69, 0.73);  // Dusty Pastel Rose
+const vec3 COLOR_WHITE = vec3(0.98, 0.98, 0.98);  // Clean Milk White
+const vec3 COLOR_ACCENT = vec3(1.00, 0.84, 0.70); // Rich Pastel Peach Cream
+
+vec3 render(vec2 uv) {
+    vec3 ro = vec3(0.0, 0.0, -2.4);
+    vec3 rd = normalize(vec3(uv, 1.0));
+    float dO = 0.0;
+    vec3 trapColor = vec3(0.0);
+    int maxSteps = 160;
+    vec3 p;
+    bool hit = false;
+    float glow = 0.0;
+
+    for (int i = 0; i < maxSteps; i++) {
+        p = ro + rd * dO;
+        float dS = map(p, trapColor);
+        dO += dS * 0.65;
+
+        // Volumetric lighting approximation through exponential attenuation
+        glow += exp(-dS * 90.0);
+
+        if (dO > 5.0)
+            break;
+        if (dS < 0.0002) {
+            hit = true;
+            break;
+        }
+    }
+
+    // Brightened background gradient for pastel aesthetics
+    float backgroundGradient = 1.0 - dot(uv, uv) * 0.15;
+    vec3 color = COLOR_WHITE * backgroundGradient;
+
+    // Soft clean ambient aura blending
+    color += COLOR_ACCENT * glow * 0.005;
+
+    if (hit) {
+        vec3 n = getNormal(p);
+        vec3 l = normalize(vec3(1.5, 2.5, -1.0));
+
+        // Phong lighting model: diffuse and specular reflection formulas
+        float diff = max(dot(n, l), 0.0);
+        float spec = pow(max(dot(reflect(-l, n), -rd), 0.0), 35.0); // Tighter, cleaner specularity
+
+        // Geometric attenuation simulation: relaxed AO to prevent pitch-black muddy cavities
+        float ao = clamp(1.0 - float(dO) * 0.08, 0.0, 1.0);
+        ao = pow(ao, 1.0); // Made shadows much linear and shallower for a flatter, softer look
+
+        vec3 fractalColor = COLOR_BASE;
+
+        // Blend deep folds with pastel rose instead of dark blue
+        fractalColor = mix(fractalColor, COLOR_FOLDS, smoothstep(0.15, 0.65, trapColor.r) * 0.5);
+
+        // Inject crisp milk white base on growth highlights
+        float growthHighlight = smoothstep(0.80, 0.30, trapColor.b);
+        fractalColor = mix(fractalColor, COLOR_WHITE, growthHighlight * 0.85);
+
+        // Mint/Sky-blue pearlescent iridescence on slopes for maximum pastel vibe
+        vec3 normalTint = abs(n);
+        fractalColor += vec3(0.02, 0.06, 0.05) * sin(normalTint.x * 6.0);
+
+        // Inject the vibrant Peach Accent smoothly across the 7-iteration surface
+        float sharpGoldAccent = smoothstep(0.50, 0.05, trapColor.b) * smoothstep(0.1, 0.7, trapColor.g);
+        fractalColor = mix(fractalColor, COLOR_ACCENT, sharpGoldAccent * 0.90);
+
+        // Schlick's approximation for a strong, clean rim light reflection
+        float fresnel = pow(1.0 - max(dot(n, -rd), 0.0), 3.5);
+        fractalColor = mix(fractalColor, vec3(1.0, 1.0, 1.0), fresnel * 0.50);
+
+        // Boosted ambient term (diff * 0.5 + 0.5) to keep shadows filled with color, never dark gray
+        vec3 lighting = fractalColor * (diff * 0.5 + 0.5) + vec3(1.0) * spec;
+        lighting *= ao;
+
+        // Linear interpolation formula for spatial distance fog blending
+        float edgeFog = clamp((dO - 1.2) / 1.8, 0.0, 1.0);
+        color = mix(lighting, color, edgeFog * 0.4);
+    }
+
+    return color;
+}
+
+void main() {
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outTexture);
+
+    if (texelCoord.x >= size.x || texelCoord.y >= size.y) {
+        return;
+    }
+
+    float angleX = push.data2.w * 0.1;
+    float angleY = push.data2.w * 0.2;
+
+    // Rotation matrices construction initialized at the beginning of main for map/getNormal safety
+    mat3 rotX = mat3(1.0, 0.0, 0.0, 0.0, cos(angleX), -sin(angleX), 0.0, sin(angleX), cos(angleX));
+    mat3 rotY = mat3(cos(angleY), 0.0, sin(angleY), 0.0, 1.0, 0.0, -sin(angleY), 0.0, cos(angleY));
+    rotMatrix = rotY * rotX;
+
+    vec3 finalColor = vec3(0.0);
+
+    for (int m = 0; m < AA; m++) {
+        for (int n = 0; n < AA; n++) {
+            vec2 offset = vec2(float(m), float(n)) / float(AA) - 0.5;
+            vec2 uv = (texelCoord + offset - 0.5 * size.xy) / size.y;
+            finalColor += render(uv);
+        }
+    }
+
+    finalColor /= float(AA * AA);
+
+    // Contrast optimization: lifted dark points to match high-key aesthetic
+    finalColor = clamp(finalColor, 0.0, 1.0);
+    finalColor = smoothstep(-0.05, 1.0, finalColor); // Lifted blacks slightly
+    finalColor = pow(finalColor, vec3(0.90));        // Lifted midtones for a bright, glowing appearance
+
+    imageStore(outTexture, texelCoord, vec4(finalColor, 1.0));
+}

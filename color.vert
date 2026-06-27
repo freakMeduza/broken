@@ -4,8 +4,14 @@
 
 layout(location = 0) out vec3 outColor;
 layout(location = 1) out vec3 outNormal;
-layout(location = 2) out vec3 outSunDirection;
-layout(location = 3) out vec2 outUV;
+layout(location = 2) out vec2 outUV;
+
+layout(set = 0, binding = 1) uniform scene_uniform_buffer {
+    mat4 viewMatrix;
+    mat4 projMatrix;
+    vec4 sunDirection;
+}
+scene;
 
 struct Vertex {
     vec3 position;
@@ -15,36 +21,32 @@ struct Vertex {
     vec4 color;
 };
 
-layout(buffer_reference, std430) readonly buffer VertexBuffer {
+layout(buffer_reference) readonly buffer VertexBuffer {
     Vertex vertices[];
 };
 
-layout(buffer_reference, std430) readonly buffer IndexBuffer {
+layout(buffer_reference) readonly buffer IndexBuffer {
     uint indices[];
 };
 
-layout(push_constant) uniform gpu_scene_data {
-    mat4 viewProj;
-    mat4 invViewProj;
-    mat4 model;
-    vec4 sunDirection;
-    VertexBuffer vertexSSBODeviceAddress;
-    uint vertexSSBOOffset;
-    IndexBuffer indexSSBODeviceAddress;
-    uint indexSSBOOffset;
+layout(push_constant) uniform scene_constants {
+    mat4 modelMatrix;
+    VertexBuffer vertexBuffer;
+    uint vertexBufferOffset;
+    IndexBuffer indexBuffer;
+    uint indexBufferOffset;
 }
-scene;
+push;
 
 void main() {
-    uint globalIndexId = gl_VertexIndex + scene.indexSSBOOffset;
-    uint vertexIndex = scene.indexSSBODeviceAddress.indices[globalIndexId];
-    uint globalVertexId = vertexIndex + scene.vertexSSBOOffset;
-    Vertex v = scene.vertexSSBODeviceAddress.vertices[globalVertexId];
+    uint indexBufferIndex = gl_VertexIndex + push.indexBufferOffset;
+    uint vertexIndex = push.indexBuffer.indices[indexBufferIndex];
+    uint vertexBufferIndex = vertexIndex + push.vertexBufferOffset;
+    Vertex v = push.vertexBuffer.vertices[vertexBufferIndex];
 
-    gl_Position = scene.viewProj * scene.model * vec4(v.position, 1.0);
+    gl_Position = scene.projMatrix * scene.viewMatrix * push.modelMatrix * vec4(v.position, 1.0);
 
     outColor = v.color.xyz;
-    outNormal = mat3(scene.model) * v.normal;
-    outSunDirection = scene.sunDirection.xyz;
+    outNormal = mat3(push.modelMatrix) * v.normal;
     outUV = vec2(v.uv_x, v.uv_y);
 }

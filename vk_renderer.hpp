@@ -1,5 +1,4 @@
 #pragma once
-#include "rhi.hpp"
 #include "scene.hpp"
 
 #include "vk_device.hpp"
@@ -8,16 +7,33 @@
 
 namespace broken::vulkan {
 
-struct alignas(16) gpu_scene_data {
-    glm::mat4 viewProj;
-    glm::mat4 invViewProj;
-    glm::mat4 model;
+struct scene_uniform_buffer {
+    glm::mat4 viewMatrix;
+    glm::mat4 projMatrix;
     glm::vec4 sunDirection;
+};
+
+struct scene_constants {
+    glm::mat4 modelMatrix;
     vk::DeviceAddress vertexSSBODeviceAddress;
     uint32_t vertexSSBOOffset;
     vk::DeviceAddress indexSSBODeviceAddress;
     uint32_t indexSSBOOffset;
 };
+
+static_assert(sizeof(scene_constants) <= 128,
+              "scene_constants size exceeds the standard 128-byte Vulkan push constant limit");
+
+struct compute_constants {
+    glm::mat4 data1;
+    glm::vec4 data2;
+    glm::vec4 data3;
+    glm::vec4 data4;
+    glm::vec4 data5;
+};
+
+static_assert(sizeof(compute_constants) <= 128,
+              "compute_constants size exceeds the standard 128-byte Vulkan push constant limit");
 
 struct renderer {
     explicit renderer(GLFWwindow* window) noexcept;
@@ -59,6 +75,12 @@ struct renderer {
     vk::DeviceSize indexSSBOSize;
     vk::DeviceSize indexSSBOCapacity;
 
+    vk::UniqueBuffer sceneUBO;
+    vk::UniqueDeviceMemory sceneUBOMemory;
+    vk::DeviceAddress sceneUBODeviceAddress;
+    vk::DeviceSize sceneUBOSize;
+    vk::DeviceSize sceneUBOCapacity;
+
     vk::UniqueDescriptorPool descriptorPool;
     vk::UniqueDescriptorSetLayout descriptorSetLayout;
     vk::UniqueDescriptorSet descriptorSet;
@@ -80,6 +102,3 @@ struct renderer {
 };
 
 } // namespace broken::vulkan
-
-static_assert(broken::rhi::renderer_concept<broken::vulkan::renderer>,
-              "Type 'broken::vulkan::renderer' does not match 'broken::rhi::renderer_concept'!");

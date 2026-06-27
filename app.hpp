@@ -1,8 +1,8 @@
 #pragma once
 #include "broken.hpp"
 #include "log.hpp"
-#include "rhi.hpp"
 #include "scene.hpp"
+#include "vk_renderer.hpp"
 
 #include <GLFW/glfw3.h>
 
@@ -22,7 +22,6 @@ glm::vec3 calculate_sun_direction(float time01) {
     return glm::normalize(dir);
 }
 
-template <rhi::renderer_concept T>
 int run() {
 #if defined(_DEBUG)
     spdlog::set_level(spdlog::level::trace);
@@ -34,12 +33,10 @@ int run() {
         return EXIT_FAILURE;
     }
 
-#if defined(BROKEN_USE_VULKAN)
     if (glfwVulkanSupported() != GLFW_TRUE) {
         broken_error("Platform doesn't support Vulkan API!");
         return EXIT_FAILURE;
     }
-#endif
 
     int width = 800;
     int height = 800;
@@ -78,14 +75,12 @@ int run() {
         glm::lookAt(glm::vec3(0.0f, 130.f, 400.f), glm::vec3(0.0f, 130.f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
     };
 
-#if defined(BROKEN_USE_VULKAN)
     scene.camera.projMatrix[1][1] *= -1.0f;
-#endif
 
     scene.load_glTF(BROKEN_PROJECT_SCENE);
 
     {
-        T renderer{window};
+        vulkan::renderer renderer{window};
 
         float lastFrame = static_cast<float>(glfwGetTime());
         static float angle = 0.0f;
@@ -106,7 +101,7 @@ int run() {
 
             static float dayTimer = 0.25f;
 
-            const float dayCycleLengthInSeconds = 60.0f;
+            const float dayCycleLengthInSeconds = 30.0f;
             const float timeSpeed = 1.0f / dayCycleLengthInSeconds;
 
             dayTimer += deltaTime * timeSpeed;
